@@ -85,13 +85,13 @@ export function CardForm({
       <input type="hidden" name="lab" value={slug} />
       {card && <input type="hidden" name="id" value={card.id} />}
       {!editing && (
-        <div role="tablist" aria-label="What you're adding" className="inline-flex rounded-xl border border-line-strong bg-surface p-1 text-sm">
+        // Two buttons, one pressed: tabs would promise panels and arrow keys that aren't there.
+        <div role="group" aria-label="What you're adding" className="inline-flex rounded-xl border border-line-strong bg-surface p-1 text-sm">
           {(["ask", "write"] as const).map((m) => (
             <button
               key={m}
               type="button"
-              role="tab"
-              aria-selected={mode === m}
+              aria-pressed={mode === m}
               onClick={() => setMode(m)}
               className={cn("rounded-lg px-3 py-1.5 transition-colors", mode === m ? "bg-surface-3 text-ink" : "text-muted hover:text-ink")}
             >
@@ -112,7 +112,6 @@ export function CardForm({
           required
           minLength={8}
           maxLength={300}
-          autoFocus={!editing}
           placeholder="Which grant do we charge fMRI scan time to?"
           className={INPUT}
         />

@@ -36,7 +36,7 @@ export function LoginForm({ next }: { next: string }) {
     <form {...formProps} className="space-y-4">
       <input type="hidden" name="next" value={next} />
       <Field label="Your email" hint="The one your lab knows you by. Thanos sends a link; there's no password.">
-        <input name="email" type="email" required autoComplete="email" autoFocus placeholder="you@university.edu" className={INPUT} />
+        <input name="email" type="email" required autoComplete="email" placeholder="you@university.edu" className={INPUT} />
       </Field>
       {state.error && <Note tone="bad">{state.error}</Note>}
       <button type="submit" disabled={pending} className={PRIMARY}>
