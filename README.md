@@ -79,17 +79,18 @@ None are needed on your own computer. See [.env.example](.env.example).
 - Postgres through [postgres.js](https://github.com/porsager/postgres), or PGlite locally. The whole schema is in [src/lib/schema.ts](src/lib/schema.ts) and is applied on start.
 - Sign-in by email link, with no passwords. Link tokens and session ids are random and stored only as hashes.
 - Search runs in the browser with [MiniSearch](https://github.com/lucaong/minisearch), plus a small stemmer and a list of lab synonyms ([src/lib/search.ts](src/lib/search.ts)). A search costs nothing and calls no model.
+- A card puts its answer straight under the question. Answers are Markdown with code blocks and tables. Paths, commands and chart strings are set in Geist Mono with a copy button, whether or not they're in backticks ([src/lib/values.ts](src/lib/values.ts)). Why it reads this way, and which of a lab's other tools to connect next: [docs/reading-and-integrations.md](docs/reading-and-integrations.md).
 - The secret check is [src/lib/sensitive.ts](src/lib/sensitive.ts).
 
 ## Checks
 
 ```bash
 npm test             # search and the secret check: no network, no database
-npm run lint
+npm run lint         # with eslint-plugin-jsx-a11y's recommended rules
 npx tsc --noEmit
 npm run build
 ```
 
 ## Credits
 
-The stylesheet, the Markdown renderer and the toasts come from Proxenos (MIT, the same author). Thanos also builds on Next.js, React, Tailwind CSS, PGlite, postgres.js, MiniSearch and [Lucide](https://lucide.dev) icons, each under its own licence.
+The stylesheet, the Markdown renderer and the toasts come from Proxenos (MIT, the same author). Thanos also builds on Next.js, React, Tailwind CSS, PGlite, postgres.js, MiniSearch and [Lucide](https://lucide.dev) icons, and checks itself with [eslint-plugin-jsx-a11y](https://github.com/jsx-eslint/eslint-plugin-jsx-a11y) (MIT), each under its own licence.
