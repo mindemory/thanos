@@ -1,0 +1,169 @@
+// A tiny markdown renderer for answers: headings, lists, paragraphs, code blocks, quotes, rules,
+// and inline bold, italics, code, links and bare web addresses. It builds React elements, so
+// what people write is never parsed as HTML. From Proxenos (MIT, the same author).
+
+import type { ReactNode } from "react";
+
+type Block =
+  | { type: "h"; level: number; text: string }
+  | { type: "ul" | "ol"; items: string[] }
+  | { type: "p" | "quote" | "code"; text: string }
+  | { type: "hr" };
+
+function parse(md: string): Block[] {
+  const blocks: Block[] = [];
+  let para: string[] = [];
+  let quote: string[] = [];
+  let list: { type: "ul" | "ol"; items: string[] } | null = null;
+  let code: string[] | null = null;
+
+  const flush = () => {
+    if (para.length) blocks.push({ type: "p", text: para.join(" ") });
+    if (quote.length) blocks.push({ type: "quote", text: quote.join(" ") });
+    if (list) blocks.push(list);
+    para = [];
+    quote = [];
+    list = null;
+  };
+
+  for (const line of md.replace(/\r\n?/g, "\n").split("\n")) {
+    if (code) {
+      if (line.trim().startsWith("```")) {
+        blocks.push({ type: "code", text: code.join("\n") });
+        code = null;
+      } else code.push(line);
+      continue;
+    }
+    const t = line.trim();
+    let m: RegExpMatchArray | null;
+    if (!t) flush();
+    else if (t.startsWith("```")) {
+      flush();
+      code = [];
+    } else if ((m = t.match(/^(#{1,6})\s+(.*)$/))) {
+      flush();
+      blocks.push({ type: "h", level: m[1].length, text: m[2] });
+    } else if (/^(-{3,}|\*{3,}|_{3,})$/.test(t)) {
+      flush();
+      blocks.push({ type: "hr" });
+    } else if ((m = t.match(/^([-*+]|\d+[.)])\s+(.*)$/))) {
+      const type = /^\d/.test(m[1]) ? "ol" : "ul";
+      if (!list || list.type !== type) {
+        flush();
+        list = { type, items: [] };
+      }
+      list.items.push(m[2]);
+    } else if (list && /^\s+/.test(line)) {
+      list.items[list.items.length - 1] += " " + t;
+    } else if (t.startsWith(">")) {
+      if (!quote.length) flush();
+      quote.push(t.replace(/^>\s?/, ""));
+    } else {
+      if (list || quote.length) flush();
+      para.push(t);
+    }
+  }
+  if (code) blocks.push({ type: "code", text: code.join("\n") });
+  flush();
+  return blocks;
+}
+
+const INLINE = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)\s]+\)|https?:\/\/[^\s<>()]*[^\s<>().,;:!?'"]|\*[^*\s][^*]*\*)/g;
+
+const LINK = "text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent";
+
+function inline(text: string): ReactNode[] {
+  return text
+    .split(INLINE)
+    .filter(Boolean)
+    .map((part, i) => {
+      if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+        return <strong key={i}>{part.slice(2, -2)}</strong>;
+      }
+      if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
+        return (
+          <code key={i} className="px-1 py-0.5 rounded bg-surface-2 text-[0.88em] num">
+            {part.slice(1, -1)}
+          </code>
+        );
+      }
+      const link = part.match(/^\[([^\]]+)\]\(([^)\s]+)\)$/);
+      if (link) {
+        if (/^\/(?!\/)/.test(link[2])) {
+          return (
+            <a key={i} href={link[2]} className={LINK}>
+              {link[1]}
+            </a>
+          );
+        }
+        return /^https?:\/\//i.test(link[2]) ? (
+          <a key={i} href={link[2]} target="_blank" rel="noopener noreferrer" className={LINK}>
+            {link[1]}
+          </a>
+        ) : (
+          link[1]
+        );
+      }
+      if (/^https?:\/\//i.test(part)) {
+        return (
+          <a key={i} href={part} target="_blank" rel="noopener noreferrer" className={`${LINK} break-all`}>
+            {part.replace(/^https?:\/\/(www\.)?/i, "")}
+          </a>
+        );
+      }
+      if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
+        return <em key={i}>{part.slice(1, -1)}</em>;
+      }
+      return part;
+    });
+}
+
+const HEADING = ["font-display text-2xl", "font-display text-xl", "font-display text-lg", "text-base font-semibold"];
+
+export function Markdown({ source, compact = false }: { source: string; compact?: boolean }) {
+  return (
+    <div className={compact ? "space-y-2 text-sm text-ink/90 leading-relaxed break-words" : "space-y-3 text-ink leading-relaxed break-words"}>
+      {parse(source).map((b, i) => {
+        switch (b.type) {
+          case "h": {
+            const size = compact ? "text-sm font-semibold" : HEADING[Math.min(b.level, 4) - 1];
+            const cls = `${size} ${i > 0 ? "pt-2" : ""}`;
+            return b.level === 1 ? (
+              <h3 key={i} className={cls}>{inline(b.text)}</h3>
+            ) : (
+              <h4 key={i} className={cls}>{inline(b.text)}</h4>
+            );
+          }
+          case "ul":
+            return (
+              <ul key={i} className="list-disc pl-6 space-y-1 marker:text-accent">
+                {b.items.map((it, j) => <li key={j}>{inline(it)}</li>)}
+              </ul>
+            );
+          case "ol":
+            return (
+              <ol key={i} className="list-decimal pl-6 space-y-1 marker:text-accent marker:num">
+                {b.items.map((it, j) => <li key={j}>{inline(it)}</li>)}
+              </ol>
+            );
+          case "quote":
+            return (
+              <blockquote key={i} className="border-l-2 border-accent/40 pl-4 text-muted">
+                {inline(b.text)}
+              </blockquote>
+            );
+          case "code":
+            return (
+              <pre key={i} className="bg-surface-2 rounded-xl p-4 text-sm num overflow-x-auto">
+                {b.text}
+              </pre>
+            );
+          case "hr":
+            return <hr key={i} className="border-line" />;
+          default:
+            return <p key={i}>{inline(b.text)}</p>;
+        }
+      })}
+    </div>
+  );
+}
