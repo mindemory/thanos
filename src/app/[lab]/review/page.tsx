@@ -2,7 +2,7 @@ import { Inbox } from "lucide-react";
 import Link from "next/link";
 
 import { one } from "@/components/Frame";
-import { ConfirmSubmit } from "@/components/client";
+import { CodeBlock, ConfirmSubmit, Value } from "@/components/client";
 import { DraftCard, DraftUpload } from "@/components/lab/DraftCard";
 import { QUIET } from "@/components/ui";
 import { dropAllWaiting } from "@/lib/actions";
@@ -54,14 +54,11 @@ export default async function ReviewPage({
               On a computer with the lab&apos;s Slack and <a href="https://ollama.com" className="text-accent underline underline-offset-2">Ollama</a>,
               in the Thanos folder, run:
             </p>
-            <pre className="num overflow-x-auto rounded-xl bg-surface-2 p-3 text-xs text-ink">
-              npm run import-slack -- --from &lt;folder&gt; --lab {slug}
-            </pre>
+            <CodeBlock code={`npm run import-slack -- --from <folder> --lab ${slug}`} lang="bash" />
             <p>
               The folder is an export from Slack (in its settings, under Import/export data, unzipped) or Proxenos&apos;s copy of the
               workspace. It reads public channels only. A model running on that computer turns each conversation worth keeping into a
-              draft, so nothing leaves it. The drafts land in <code className="num">.thanos/imports/{slug}-drafts.jsonl</code>: add that
-              file here.
+              draft, so nothing leaves it. The drafts land in <Value text={`.thanos/imports/${slug}-drafts.jsonl`} />: add that file here.
             </p>
           </div>
         </details>

@@ -145,6 +145,8 @@ export function plain(md: string): string {
   return md
     .replace(/```[\s\S]*?```/g, " ")
     .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/^[ \t|:-]*-[ \t|:-]*$/gm, " ") // a table's rule under its header, or a horizontal rule
+    .replace(/\|/g, " ")
     .replace(/[*_`>#]+/g, "")
     .replace(/^\s*(?:[-+]|\d+[.)])\s+/gm, "")
     .replace(/\s+/g, " ")

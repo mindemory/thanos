@@ -16,7 +16,7 @@ import { topicOf } from "@/lib/topics";
 
 const THANOS = "Thanos"; // who wrote what a lab started with
 
-/** Who asked and who answered, in a line. */
+/** Who asked and who answered, in a line, under the answer: the answer is what people came for. */
 function Byline({ card }: { card: CardDetail }) {
   const parts: string[] = [];
   // A card answered well after it was made was a question first; one written with its answer wasn't.
@@ -35,7 +35,7 @@ function Byline({ card }: { card: CardDetail }) {
   if (!card.open && !card.source && card.updatedBy && card.updatedAt !== card.answeredAt && card.updatedBy !== card.answeredBy) {
     parts.push(`edited by ${card.updatedBy}, ${ago(card.updatedAt)}`);
   }
-  return <p className="mt-3 text-sm text-muted">{parts.join(" · ")}</p>;
+  return <p className="text-sm text-muted tabular-nums">{parts.join(" · ")}</p>;
 }
 
 /** What each version did, judged against the one before it. */
@@ -60,7 +60,7 @@ function History({ revisions }: { revisions: Revision[] }) {
             <details className="group/v">
               <summary className="cursor-pointer list-none text-sm">
                 <span className="text-ink">{verb(v, revisions[i + 1])}</span>
-                <span className="text-muted">
+                <span className="text-muted tabular-nums">
                   {" "}
                   by {v.editedBy ?? THANOS} · {monthYear(v.editedAt)}
                 </span>
@@ -113,7 +113,6 @@ export default async function CardPage({
         <TopicIcon topic={topic.id} size={14} /> {topic.label}
       </Link>
       <h1 className="title-1 mt-3">{card.question}</h1>
-      <Byline card={card} />
 
       {justAsked && (
         <Note tone="ok" className="mt-6">
@@ -137,26 +136,30 @@ export default async function CardPage({
           </div>
         </div>
       ) : (
-        <>
-          <div className="card mt-6 p-5 md:p-6">
-            <Markdown source={card.answer} />
-          </div>
-          {stale ? (
-            <p className="mt-3 flex items-start gap-2 text-sm text-warn-ink">
+        <div className="card mt-6 p-5 md:p-6">
+          <Markdown source={card.answer} />
+        </div>
+      )}
+
+      {/* Under the answer: whether it's still right, then who wrote it. */}
+      <div className="mt-3 space-y-1.5">
+        {!card.open &&
+          (stale ? (
+            <p className="flex items-start gap-2 text-sm text-warn-ink tabular-nums">
               <TriangleAlert size={15} className="mt-0.5 flex-shrink-0" aria-hidden="true" />
               Nobody has said this is still right since {monthYear(card.checkedAt ?? card.answeredAt ?? card.updatedAt)}, so it may be out of
               date. If you know it is, say so below; if it isn&apos;t, fix it.
             </p>
           ) : (
             card.checkedAt && (
-              <p className="mt-3 flex items-center gap-2 text-sm text-ok-ink">
+              <p className="flex items-center gap-2 text-sm text-ok-ink tabular-nums">
                 <BadgeCheck size={15} aria-hidden="true" />
                 Checked {ago(card.checkedAt)} by {card.checkedBy ?? THANOS}
               </p>
             )
-          )}
-        </>
-      )}
+          ))}
+        <Byline card={card} />
+      </div>
 
       {tags.length > 0 && (
         <p className="mt-5 flex flex-wrap gap-1.5">

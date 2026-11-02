@@ -31,7 +31,7 @@ export default async function PeoplePage({ params }: { params: Promise<{ lab: st
         {m.title && <span className="text-sm text-muted">{m.title}</span>}
         {m.id === person.id && <span className="text-xs text-faint">you</span>}
       </div>
-      <p className="mt-1 flex flex-wrap gap-x-3 text-sm text-faint">
+      <p className="mt-1 flex flex-wrap gap-x-3 text-sm text-faint tabular-nums">
         <a href={`mailto:${m.email}`} className="hover:text-ink">
           {m.email}
         </a>

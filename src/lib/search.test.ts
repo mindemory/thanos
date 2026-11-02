@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildIndex, search, stem, type Doc } from "./search.ts";
+import { buildIndex, plain, search, stem, type Doc } from "./search.ts";
 
 const card = (id: string, title: string, body = "", tags = "", open = false): Doc => ({
   id,
@@ -45,4 +45,8 @@ test("half-typed words and small typos still match", () => {
 
 test("a query of only small words finds nothing rather than everything", () => {
   assert.deepEqual(search(index, "how do I"), []);
+});
+
+test("a snippet reads a table as words, without its pipes and rules", () => {
+  assert.equal(plain("| Grant | Pays for |\n| --- | ---: |\n| R01 | `scans` |"), "Grant Pays for R01 scans");
 });

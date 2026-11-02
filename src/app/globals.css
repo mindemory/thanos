@@ -20,9 +20,10 @@
   --c-surface-3: #2c2c2c; /* a raised control under the pointer */
   --c-ink: #ececec; /* body text: 15.9:1 on the ground */
   --c-muted: #a3a3a3; /* secondary text: 7.5:1 on the ground */
-  --c-faint: #868686; /* tertiary labels: 5.2:1 on the ground; never on surface-2 */
+  --c-faint: #8a8a8a; /* tertiary labels: 5.5:1 on the ground, 4.6:1 on surface-2 (a row under the pointer) */
   --c-line: #262626; /* hairlines */
   --c-line-strong: #383838; /* control borders */
+  --c-field: #686868; /* a text field's edge, the only thing that shows it's there: 3.2:1 on surface */
   --c-accent: #b7a6ff; /* violet: 8.9:1 on the ground */
   --c-accent-ink: #111111; /* text on an accent fill */
 
@@ -48,9 +49,10 @@
   --c-surface-3: #e8e6e0;
   --c-ink: #1f2328; /* 15.1:1 on the ground */
   --c-muted: #5c636d; /* 5.9:1 on the ground */
-  --c-faint: #6a717b; /* 4.8:1 on the ground */
+  --c-faint: #656c76; /* 5.1:1 on the ground, 4.7:1 on surface-2 */
   --c-line: #e6e4de;
   --c-line-strong: #d3d0c8;
+  --c-field: #8f8b82; /* 3.4:1 on surface */
   --c-accent: #5b3fd0; /* 6.6:1 on the ground */
   --c-accent-ink: #ffffff;
 
@@ -91,6 +93,7 @@
   --color-faint: var(--c-faint);
   --color-line: var(--c-line);
   --color-line-strong: var(--c-line-strong);
+  --color-field: var(--c-field);
   --color-accent: var(--c-accent);
   --color-accent-ink: var(--c-accent-ink);
 
@@ -120,6 +123,15 @@
   letter-spacing: -0.01em;
   /* A mono space is a full cell wide; pull "2h ago" back together. */
   word-spacing: -0.3em;
+}
+
+/* Code, paths, commands and IDs: mono at its natural spacing (not num's tighter words), with no
+   ligatures, so what shows is what gets copied. */
+@utility code {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-variant-numeric: tabular-nums slashed-zero;
+  overflow-wrap: anywhere;
 }
 
 /* Small uppercase label above a group. */
@@ -170,6 +182,7 @@
   font-size: 1.0625rem;
   line-height: 1.6;
   color: var(--c-muted);
+  max-width: 34em; /* about 75 characters a line, however wide the column (Geist's 0, and so ch, is wide) */
 }
 
 @utility smallcaps {
@@ -200,6 +213,15 @@ body {
 :focus-visible {
   outline: 2px solid var(--c-accent);
   outline-offset: 2px;
+}
+
+/* On a phone the top bar and the tab bar stay on screen. Scroll whatever has focus clear of them,
+   so the keyboard's place is never hidden under one (WCAG 2.4.11). */
+@media (width < 48rem) {
+  html {
+    scroll-padding-top: 4rem;
+    scroll-padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -259,6 +281,24 @@ body {
   .tile-hover:hover {
     border-color: var(--c-line-strong);
     background: var(--c-surface-2);
+  }
+
+  /* A link that makes its whole row clickable. With the keyboard, its ring goes round the row it
+     stands for, not just its words. Anything else in the row that acts sits above it (z-10). */
+  .stretched::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 0.75rem;
+  }
+
+  .stretched:focus-visible {
+    outline: none;
+  }
+
+  .stretched:focus-visible::after {
+    outline: 2px solid var(--c-accent);
+    outline-offset: 2px;
   }
 
   /* Skeleton blocks shimmer while a view loads. */

@@ -121,14 +121,14 @@ export function CardForm({
       {mode === "write" && (
         <Field
           label={card?.open ? "Your answer" : "The answer"}
-          hint="Markdown works: **bold**, lists, `code`, [links](https://…). Say who holds a card or a password and how to ask them, not the number."
+          hint="The answer first, then the details. Markdown works: **bold**, lists, tables, [links](https://…), and `backticks` around a path, a command or a chart string, which give it a copy button. Say who holds a card or a password and how to ask them, not the number."
         >
           <textarea
             name="answer"
             defaultValue={card?.answer ?? ""}
             rows={10}
             required={!editing}
-            placeholder="What you'd tell someone new, and who to ask if it changes."
+            placeholder="The answer in a line, then what someone new would need to know, and who to ask if it changes."
             className={cn(INPUT, "leading-relaxed")}
           />
         </Field>

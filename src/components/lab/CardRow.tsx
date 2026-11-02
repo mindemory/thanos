@@ -13,11 +13,11 @@ export function CardRow({ slug, card, action }: { slug: string; card: CardSummar
     <li className="tile tile-hover relative flex gap-3 p-3.5">
       <TopicIcon topic={card.topic} className="mt-1 flex-shrink-0 text-muted" />
       <div className="min-w-0 flex-1">
-        <Link href={`/${slug}/c/${card.id}`} className="title-3 block after:absolute after:inset-0 after:content-['']">
+        <Link href={`/${slug}/c/${card.id}`} className="stretched title-3 block">
           {card.question}
         </Link>
         {card.answer && <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-muted">{plain(card.answer)}</p>}
-        <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-faint">
+        <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-faint tabular-nums">
           <span>{topicOf(card.topic).label}</span>
           {card.open ? (
             <span className="text-warn-ink">

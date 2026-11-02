@@ -1,6 +1,7 @@
 import { ArrowRight, GitFork, Star } from "lucide-react";
 import Link from "next/link";
 
+import { CopyIcon } from "@/components/client";
 import { Note, QUIET } from "@/components/ui";
 import { ago } from "@/lib/format";
 import { labRepos } from "@/lib/github";
@@ -41,12 +42,16 @@ export default async function CodePage({ params }: { params: Promise<{ lab: stri
         <ul className="mt-8 space-y-2">
           {repos.map((r) => (
             <li key={`${r.owner}/${r.name}`} className="tile tile-hover relative p-3.5">
-              <a href={r.url} target="_blank" rel="noopener noreferrer" className="after:absolute after:inset-0 after:content-['']">
-                <span className="text-faint">{r.owner}/</span>
-                <span className="title-3">{r.name}</span>
-              </a>
+              <div className="flex items-start gap-2">
+                {/* A repository's name is an ID people type and paste, so it's set in mono. */}
+                <a href={r.url} target="_blank" rel="noopener noreferrer" className="stretched code min-w-0 flex-1 text-[0.9375rem]">
+                  <span className="text-faint">{r.owner}/</span>
+                  <span className="text-ink">{r.name}</span>
+                </a>
+                <CopyIcon text={r.url} label={`Copy the address of ${r.owner}/${r.name}, to clone it`} className="relative z-10 -my-0.5" />
+              </div>
               {r.description && <p className="mt-1 text-sm leading-relaxed text-muted">{r.description}</p>}
-              <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-faint">
+              <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-faint tabular-nums">
                 {r.language && <span>{r.language}</span>}
                 <span>Changed {ago(r.pushedAt)}</span>
                 {r.stars > 0 && (

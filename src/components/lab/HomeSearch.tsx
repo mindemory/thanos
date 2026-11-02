@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { Marked, useLab, useSearchIndex } from "@/components/lab/LabProvider";
+import { plural } from "@/lib/format";
 import { search, snippet, type Hit } from "@/lib/search";
 import { topicOf } from "@/lib/topics";
 import { cn } from "@/lib/utils";
@@ -31,7 +32,7 @@ function ResultRow({ hit, active, onHover }: { hit: Hit; active: boolean; onHove
             <Marked text={snippet(doc.body, terms)} terms={terms} />
           </span>
         )}
-        <span className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-faint">
+        <span className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-faint tabular-nums">
           <span>{doc.kind === "repo" ? "Code on GitHub" : topicOf(doc.topic).label}</span>
           {doc.open && <span className="text-warn-ink">Open question</span>}
           {doc.helped > 0 && <span className="num">Helped {doc.helped}</span>}
@@ -120,12 +121,16 @@ export function HomeSearch({ placeholder, children }: { placeholder: string; chi
           aria-label={`Search ${name}`}
           autoComplete="off"
           spellCheck={false}
-          className="w-full rounded-2xl border border-line-strong bg-surface py-3.5 pl-11 pr-12 text-base text-ink shadow-card placeholder:text-faint focus:border-accent/60 focus:outline-none"
+          className="w-full rounded-2xl border border-field bg-surface py-3.5 pl-11 pr-12 text-base text-ink shadow-card placeholder:text-faint focus:border-accent"
         />
         <kbd className="num pointer-events-none absolute right-4 top-1/2 hidden -translate-y-1/2 rounded-md border border-line-strong px-1.5 text-xs text-faint sm:block">
           /
         </kbd>
       </div>
+      {/* How many matches, said aloud as it changes, for someone who can't see the list fill in. */}
+      <p className="sr-only" aria-live="polite">
+        {asked ? (hits.length ? plural(hits.length, "match", "matches") : "Nothing matches yet") : ""}
+      </p>
       {asked ? (
         <div className="fade-in mt-4">
           {hits.length > 0 ? (

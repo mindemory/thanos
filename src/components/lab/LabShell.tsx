@@ -82,6 +82,13 @@ export function LabShell({ slug, name, institution, open, review, personName, ch
 
   return (
     <div className="flex min-h-dvh">
+      {/* The first thing the keyboard reaches, so nobody tabs through the whole rail on every page. */}
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-[70] focus:rounded-lg focus:border focus:border-line-strong focus:bg-surface-2 focus:px-3 focus:py-2 focus:text-sm focus:text-ink focus:shadow-pop"
+      >
+        Skip to the page
+      </a>
       <aside className="sticky top-0 hidden h-dvh w-16 flex-shrink-0 flex-col border-r border-line bg-surface/40 px-3 py-3 md:flex xl:w-60 xl:px-3.5 xl:py-4">
         <Link
           href="/"
@@ -147,7 +154,7 @@ export function LabShell({ slug, name, institution, open, review, personName, ch
             </Link>
           </div>
         </header>
-        <main className="flex-1 px-4 pb-28 pt-6 md:px-10 md:pb-16 md:pt-12">
+        <main id="main" tabIndex={-1} className="flex-1 px-4 pb-28 pt-6 focus:outline-none md:px-10 md:pb-16 md:pt-12">
           <div className="mx-auto w-full max-w-3xl">{children}</div>
         </main>
       </div>
