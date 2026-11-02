@@ -36,7 +36,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME }} />
       </head>
-      <body className="bg-bg font-sans text-ink antialiased">
+      {/* Browser extensions such as Grammarly add attributes to <body> before React loads; that
+          isn't a mismatch worth an error. It covers <body>'s own attributes, nothing inside it. */}
+      <body suppressHydrationWarning className="bg-bg font-sans text-ink antialiased">
         <ToastProvider>{children}</ToastProvider>
       </body>
     </html>
