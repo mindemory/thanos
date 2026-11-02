@@ -12,6 +12,7 @@ export interface CardSummary {
   answer: string;
   topic: string;
   tags: string;
+  source: string; // where a card kept from the lab's chat came from; empty for one written here
   open: boolean;
   helped: number;
   wanted: number;
@@ -26,7 +27,7 @@ export interface CardSummary {
 const who = (alias: string) => `coalesce(${alias}.name, split_part(${alias}.email, '@', 1))`;
 
 const SUMMARY = `
-  select c.id, c.question, c.answer, c.topic, c.tags, c.created_at, c.updated_at, c.answered_at, c.checked_at,
+  select c.id, c.question, c.answer, c.topic, c.tags, c.source, c.created_at, c.updated_at, c.answered_at, c.checked_at,
     ${who("pa")} as asked_by, ${who("pb")} as answered_by,
     (select count(*)::int from reactions r where r.card_id = c.id and r.kind = 'helped') as helped,
     (select count(*)::int from reactions r where r.card_id = c.id and r.kind = 'wanted') as wanted
@@ -41,6 +42,7 @@ function toSummary(r: Row): CardSummary {
     answer: String(r.answer),
     topic: String(r.topic),
     tags: String(r.tags),
+    source: String(r.source ?? ""),
     open: !r.answer,
     helped: Number(r.helped),
     wanted: Number(r.wanted),
@@ -176,6 +178,26 @@ export async function updateCard(
   );
   await keepVersion(q, id, personId, input);
   return { firstAnswer, askedBy: before.asked_by };
+}
+
+/**
+ * A card an admin kept from a draft. They added it, so they're its asker; the people who answered
+ * are named in its source, and it counts as answered when they answered, so an old answer is
+ * marked as possibly out of date until someone says it's still right.
+ */
+export async function insertKeptCard(
+  labId: string,
+  personId: string,
+  input: CardInput & { source: string; dated: string | null },
+): Promise<string> {
+  const q = await db();
+  const [row] = await q.query<{ id: string }>(
+    `insert into cards (lab_id, question, answer, topic, tags, source, asked_by, updated_by, answered_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $7, coalesce($8::timestamptz, now())) returning id`,
+    [labId, input.question, input.answer, input.topic, input.tags, input.source, personId, input.dated],
+  );
+  await keepVersion(q, row.id, personId, input);
+  return row.id;
 }
 
 export async function cardInLab(labId: string, id: string): Promise<{ askedBy: string | null } | null> {

@@ -17,15 +17,33 @@ export interface Db {
 export const isLocal = !process.env.DATABASE_URL;
 
 // Kept on globalThis so a dev server's hot reload reuses the open database instead of opening
-// the same files a second time.
-const kept = globalThis as unknown as { thanosDb?: Promise<Db> };
+// the same files a second time. The schema is brought up to date again whenever its version
+// changes, which can happen while a dev server runs.
+const kept = globalThis as unknown as {
+  thanosDb?: Promise<Db>;
+  thanosSchema?: { version: number; ready: Promise<Db> };
+};
 
 export function db(): Promise<Db> {
+  if (kept.thanosSchema?.version !== SCHEMA_VERSION) {
+    const ready = connection().then(async (conn) => {
+      await migrate(conn);
+      return conn;
+    });
+    kept.thanosSchema = { version: SCHEMA_VERSION, ready };
+    ready.catch(() => {
+      if (kept.thanosSchema?.ready === ready) kept.thanosSchema = undefined; // the next request tries again
+    });
+  }
+  return kept.thanosSchema.ready;
+}
+
+function connection(): Promise<Db> {
   if (!kept.thanosDb) {
     const opening = open();
     kept.thanosDb = opening;
     opening.catch(() => {
-      if (kept.thanosDb === opening) kept.thanosDb = undefined; // the next request tries again
+      if (kept.thanosDb === opening) kept.thanosDb = undefined;
     });
   }
   return kept.thanosDb;
@@ -37,29 +55,24 @@ async function open(): Promise<Db> {
     const { default: postgres } = await import("postgres");
     // prepare: false, so it also works through a transaction pooler (Supabase's port 6543).
     const sql = postgres(url, { prepare: false, max: 3, idle_timeout: 20, connect_timeout: 15, onnotice: () => {} });
-    const conn: Db = {
+    return {
       query: async <T,>(text: string, params: unknown[] = []) =>
         (await sql.unsafe(text, params as never[])) as unknown as T[],
     };
-    await migrate(conn, async (text) => void (await sql.unsafe(text)));
-    return conn;
   }
   const { PGlite } = await import("@electric-sql/pglite");
   const dir = process.env.THANOS_DATA_DIR || path.join(process.cwd(), ".thanos", "db");
   mkdirSync(path.dirname(dir), { recursive: true, mode: 0o700 });
   const pg = await PGlite.create(dir);
-  const conn: Db = {
-    query: async <T,>(text: string, params: unknown[] = []) => (await pg.query<T>(text, params)).rows,
-  };
-  await migrate(conn, async (text) => void (await pg.exec(text)));
-  return conn;
+  return { query: async <T,>(text: string, params: unknown[] = []) => (await pg.query<T>(text, params)).rows };
 }
 
-async function migrate(conn: Db, exec: (sql: string) => Promise<void>) {
-  await exec("create table if not exists thanos_meta (key text primary key, value text not null)");
+async function migrate(conn: Db) {
+  await conn.query("create table if not exists thanos_meta (key text primary key, value text not null)");
   const [row] = await conn.query<{ value: string }>("select value from thanos_meta where key = 'schema'");
   if (Number(row?.value ?? 0) >= SCHEMA_VERSION) return;
-  await exec(SCHEMA);
+  // One statement at a time; in the schema a semicolon only ever ends a line, and a statement.
+  for (const statement of SCHEMA.split(/;\s*$/m)) if (statement.trim()) await conn.query(statement);
   await conn.query(
     "insert into thanos_meta (key, value) values ('schema', $1) on conflict (key) do update set value = excluded.value",
     [String(SCHEMA_VERSION)],

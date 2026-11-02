@@ -5,7 +5,7 @@
 // which RLS doesn't bind, while a host that also serves tables over an API (Supabase does) shows
 // these to nobody else.
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const SCHEMA = `
 create table if not exists people (
@@ -93,6 +93,30 @@ create table if not exists sessions (
   created_at timestamptz not null default now()
 );
 
+-- Version 2: where a card came from, and drafts waiting for an admin, made from the lab's chat
+-- by scripts/import-slack.ts. A draft's thread is kept only until someone decides on it.
+alter table cards add column if not exists source text not null default '';
+
+create table if not exists drafts (
+  id uuid primary key default gen_random_uuid(),
+  lab_id uuid not null references labs(id) on delete cascade,
+  origin text not null,
+  question text not null,
+  answer text not null,
+  topic text not null default 'other',
+  tags text not null default '',
+  source text not null default '',
+  thread text not null default '',
+  dated timestamptz,
+  status text not null default 'waiting' check (status in ('waiting', 'kept', 'dropped')),
+  created_at timestamptz not null default now(),
+  decided_by uuid references people(id) on delete set null,
+  decided_at timestamptz,
+  card_id uuid references cards(id) on delete set null,
+  unique (lab_id, origin)
+);
+create index if not exists drafts_waiting on drafts (lab_id, status, dated);
+
 alter table people enable row level security;
 alter table labs enable row level security;
 alter table members enable row level security;
@@ -101,4 +125,5 @@ alter table revisions enable row level security;
 alter table reactions enable row level security;
 alter table login_links enable row level security;
 alter table sessions enable row level security;
+alter table drafts enable row level security;
 `;

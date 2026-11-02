@@ -3,6 +3,7 @@ import { LabShell } from "@/components/lab/LabShell";
 import { nameOf } from "@/lib/auth";
 import { labCards } from "@/lib/cards";
 import { cardDoc, repoDoc } from "@/lib/docs";
+import { draftCounts } from "@/lib/drafts";
 import { labRepos } from "@/lib/github";
 import { labBySlug, requireMember } from "@/lib/labs";
 
@@ -19,8 +20,12 @@ export async function generateMetadata({ params }: { params: Promise<{ lab: stri
  */
 export default async function LabLayout({ children, params }: { children: React.ReactNode; params: Promise<{ lab: string }> }) {
   const { lab: slug } = await params;
-  const { person, lab } = await requireMember(slug);
-  const [cards, { repos }] = await Promise.all([labCards(lab.id), labRepos(lab.github)]);
+  const { person, lab, isAdmin } = await requireMember(slug);
+  const [cards, { repos }, drafts] = await Promise.all([
+    labCards(lab.id),
+    labRepos(lab.github),
+    isAdmin ? draftCounts(lab.id) : null,
+  ]);
   const docs = [...cards.map((c) => cardDoc(lab.slug, c)), ...repos.map(repoDoc)];
   return (
     <LabProvider value={{ slug: lab.slug, name: lab.name, docs }}>
@@ -29,6 +34,7 @@ export default async function LabLayout({ children, params }: { children: React.
         name={lab.name}
         institution={lab.institution}
         open={cards.filter((c) => c.open).length}
+        review={drafts?.waiting ?? 0}
         personName={nameOf(person)}
       >
         {children}

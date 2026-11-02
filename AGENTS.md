@@ -11,13 +11,15 @@ Notes for AI coding agents (and people) working in this repo. The README says wh
   - `cards.ts` (cards, versions, reactions) and `actions.ts` (every server action).
   - `search.ts` (MiniSearch, stemmer, synonyms) and `sensitive.ts` (the secret check), both import-free so `node --test` runs them.
   - `seed.ts` (a new lab's starter questions), `github.ts` (repositories), `mail.ts` (Resend), `origin.ts` (its own address).
-- `src/components/`: `lab/` for the lab's frame, search and card form. `ui.tsx` holds styles and plain pieces, `client.tsx` the ones that need the browser, `forms.tsx` the smaller forms.
+- `scripts/import-slack.ts`: turns a lab's Slack (an export, or Proxenos's copy) into drafts, with a model in Ollama on this computer. `src/lib/drafts.ts` and `src/app/[lab]/review/` take the drafts file and let an admin keep or drop each draft.
+- `src/components/`: `lab/` for the lab's frame, search, card form and drafts. `ui.tsx` holds styles and plain pieces, `client.tsx` the ones that need the browser, `forms.tsx` the smaller forms.
 
 ## Commands
 
 ```bash
 npm run dev                 # http://127.0.0.1:4848, a local copy on PGlite in .thanos/
 npm test                    # node --test: search and the secret check
+npm run import-slack -- --from <folder> --lab <slug> --dry-run   # counts a lab's Slack, no model
 npm run lint && npx tsc --noEmit && npm run build
 rm -rf .thanos              # start the local copy over, with fresh starter labs
 ```
@@ -25,6 +27,7 @@ rm -rf .thanos              # start the local copy over, with fresh starter labs
 ## Rules
 
 - **No real lab data in the repo, ever.** That covers chart strings, grant numbers, names and messages. Tests build made-up cards inside the test.
+- **A lab's chat stays on the computer it's on.** The importer reads public channels only, talks only to Ollama on 127.0.0.1, and writes under `.thanos/`, which git ignores. Never commit a drafts file, or paste lab messages into code, tests or docs.
 - **Make nothing up about a lab.** Starter cards are questions, left open. The only answers Thanos writes itself are about Thanos and about what the lab's admin gave it (its GitHub, its website).
 - **Secrets stay out.** Anything a card saves goes through `findSensitive` first, and only a person's "Save anyway" lets it through. Keep the check in `actions.ts`, on the server, whatever the form does.
 - **Every lab page checks membership on the server.** That's `requireMember` in pages and actions, plus a check that a card belongs to the lab before touching it. Lab powers come from a member's role. Only hosted operators (`THANOS_ADMINS`) act as admin in every lab.

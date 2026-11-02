@@ -1,4 +1,5 @@
-import { Download } from "lucide-react";
+import { Download, Inbox } from "lucide-react";
+import Link from "next/link";
 
 import { ConfirmSubmit, CopyButton } from "@/components/client";
 import { LabForm, NameForm } from "@/components/forms";
@@ -64,6 +65,18 @@ export default async function SettingsPage({ params }: { params: Promise<{ lab: 
           </p>
         )}
       </Section>
+
+      {isAdmin && (
+        <Section title="Bring in the lab's Slack">
+          <p className="leading-relaxed text-muted">
+            Years of answers are already sitting in the lab&apos;s Slack. Thanos can turn its public channels into drafts, with a model
+            running on your own computer, for an admin to keep, fix or drop one by one.
+          </p>
+          <Link href={`/${slug}/review`} className={`${BUTTON} mt-4`}>
+            <Inbox size={15} aria-hidden="true" /> Review drafts
+          </Link>
+        </Section>
+      )}
 
       <Section title="About the lab">
         {!isAdmin && <p className="mb-4 text-sm text-muted">Only the lab&apos;s admins can change these.</p>}

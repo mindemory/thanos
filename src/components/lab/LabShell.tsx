@@ -3,6 +3,7 @@
 import {
   FolderGit2,
   House,
+  Inbox,
   MessageCirclePlus,
   MessageCircleQuestionMark,
   SlidersHorizontal,
@@ -30,6 +31,7 @@ const NAV: NavItem[] = [
   { path: "/open", label: "Open questions", short: "Open", icon: MessageCircleQuestionMark, phone: true },
   { path: "/people", label: "People", short: "People", icon: Users, phone: true },
   { path: "/code", label: "Code", short: "Code", icon: FolderGit2, phone: true },
+  { path: "/review", label: "Review", short: "Review", icon: Inbox, phone: false }, // admins, while drafts wait
   { path: "/settings", label: "Settings", short: "Settings", icon: SlidersHorizontal, phone: false },
 ];
 
@@ -61,6 +63,7 @@ interface ShellProps {
   name: string;
   institution: string;
   open: number;
+  review: number;
   personName: string;
   children: React.ReactNode;
 }
@@ -69,7 +72,7 @@ interface ShellProps {
  * The frame of a lab's pages, as in Proxenos: a rail down the left (icons on a laptop, a sidebar
  * with labels on a wide screen), and on a phone a top bar and a tab bar.
  */
-export function LabShell({ slug, name, institution, open, personName, children }: ShellProps) {
+export function LabShell({ slug, name, institution, open, review, personName, children }: ShellProps) {
   const pathname = usePathname();
   const base = `/${slug}`;
   const isActive = (item: NavItem) =>
@@ -95,9 +98,9 @@ export function LabShell({ slug, name, institution, open, personName, children }
         </Link>
         <nav aria-label={name} className="flex min-h-0 flex-1 flex-col items-center xl:items-stretch">
           <ul className="flex flex-col items-center gap-1 xl:items-stretch">
-            {NAV.map((item) => {
+            {NAV.filter((item) => item.path !== "/review" || review > 0).map((item) => {
               const active = isActive(item);
-              const count = item.path === "/open" ? open : 0;
+              const count = item.path === "/open" ? open : item.path === "/review" ? review : 0;
               return (
                 <li key={item.path}>
                   <Link

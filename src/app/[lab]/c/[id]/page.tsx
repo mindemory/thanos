@@ -21,7 +21,9 @@ function Byline({ card }: { card: CardDetail }) {
   const parts: string[] = [];
   // A card answered well after it was made was a question first; one written with its answer wasn't.
   const askedFirst = card.answeredAt !== null && Date.parse(card.answeredAt) - Date.parse(card.createdAt) > 60_000;
-  if (card.open) {
+  if (card.source) {
+    parts.push(`From ${card.source}`, `added by ${card.askedBy ?? THANOS}, ${ago(card.createdAt)}`);
+  } else if (card.open) {
     parts.push(`Asked by ${card.askedBy ?? THANOS}, ${ago(card.createdAt)}`);
   } else if (askedFirst && card.askedBy !== card.answeredBy) {
     parts.push(`Asked by ${card.askedBy ?? THANOS}`, `answered by ${card.answeredBy ?? THANOS}, ${ago(card.answeredAt ?? card.updatedAt)}`);
@@ -30,7 +32,7 @@ function Byline({ card }: { card: CardDetail }) {
   } else {
     parts.push(`Written by ${card.answeredBy ?? THANOS}, ${ago(card.answeredAt ?? card.createdAt)}`);
   }
-  if (!card.open && card.updatedBy && card.updatedAt !== card.answeredAt && card.updatedBy !== card.answeredBy) {
+  if (!card.open && !card.source && card.updatedBy && card.updatedAt !== card.answeredAt && card.updatedBy !== card.answeredBy) {
     parts.push(`edited by ${card.updatedBy}, ${ago(card.updatedAt)}`);
   }
   return <p className="mt-3 text-sm text-muted">{parts.join(" · ")}</p>;

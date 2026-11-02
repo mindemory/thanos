@@ -4,8 +4,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { canStartLab, createLoginLink, currentPerson, endSession, LinkError, nameOf, redeemLoginLink, safeNext } from "./auth";
-import { cardInLab, insertCard, markChecked, removeCard, toggleReaction, updateCard, UUID, type CardInput } from "./cards";
+import { cardInLab, insertCard, insertKeptCard, markChecked, removeCard, toggleReaction, updateCard, UUID, type CardInput } from "./cards";
 import { db, isLocal } from "./db";
+import { addDrafts, decideDraft, dropWaiting, waitingDraft } from "./drafts";
 import { githubOwners } from "./github";
 import {
   addMember,
@@ -232,9 +233,8 @@ async function tellAsker(askedBy: string, lab: Lab, cardId: string, question: st
   );
 }
 
-export async function saveCard(_: FormState, form: FormData): Promise<FormState> {
-  const { lab, person } = await requireMember(field(form, "lab"));
-  const id = field(form, "id");
+/** A card's fields from a form, or what's wrong with them, or the secrets in them not yet confirmed. */
+function cardFields(form: FormData): CardInput | FormState {
   const input: CardInput = {
     question: field(form, "question").replace(/\s+/g, " "),
     answer: field(form, "answer").replace(/\r\n?/g, "\n"),
@@ -249,6 +249,14 @@ export async function saveCard(_: FormState, form: FormData): Promise<FormState>
     const found = findSensitive(`${input.question}\n${input.answer}\n${input.tags}`);
     if (found.length) return { sensitive: found };
   }
+  return input;
+}
+
+export async function saveCard(_: FormState, form: FormData): Promise<FormState> {
+  const { lab, person } = await requireMember(field(form, "lab"));
+  const id = field(form, "id");
+  const input = cardFields(form);
+  if (!("question" in input)) return input;
   let cardId = id;
   if (id) {
     if (!UUID.test(id)) return { error: "That card doesn't exist." };
@@ -287,4 +295,47 @@ export async function removeCardAction(slug: string, id: string): Promise<void> 
   await removeCard(id);
   revalidatePath(`/${lab.slug}`, "layout");
   redirect(`/${lab.slug}`);
+}
+
+// ── Drafts from the lab's chat ───────────────────────────────────────────────
+
+/** Part of an import file, sent a piece at a time so no request gets too big. Admins only. */
+export async function uploadDrafts(
+  slug: string,
+  lines: string[],
+): Promise<{ added: number; already: number; rejected: number } | { error: string }> {
+  const { lab, isAdmin } = await requireMember(slug);
+  if (!isAdmin) return { error: "Only the lab's admins can add drafts." };
+  if (!Array.isArray(lines) || lines.length > 1000) return { error: "That piece of the file was too big; try again." };
+  const result = await addDrafts(lab.id, lines.filter((l) => typeof l === "string"));
+  revalidatePath(`/${lab.slug}`, "layout");
+  return result;
+}
+
+/** Keeps a draft as a card, with whatever the admin changed in it. */
+export async function keepDraft(_: FormState, form: FormData): Promise<FormState> {
+  const { lab, person, isAdmin } = await requireMember(field(form, "lab"));
+  if (!isAdmin) return { error: "Only the lab's admins can keep drafts." };
+  const draft = UUID.test(field(form, "id")) ? await waitingDraft(lab.id, field(form, "id")) : null;
+  if (!draft) return { error: "Someone already decided on this draft." };
+  const input = cardFields(form);
+  if (!("question" in input)) return input;
+  const cardId = await insertKeptCard(lab.id, person.id, { ...input, note: "Kept from the lab's chat", source: draft.source, dated: draft.dated });
+  await decideDraft(lab.id, draft.id, person.id, cardId);
+  revalidatePath(`/${lab.slug}`, "layout");
+  return { saved: true };
+}
+
+export async function dropDraft(slug: string, id: string): Promise<void> {
+  const { lab, person, isAdmin } = await requireMember(slug);
+  if (!isAdmin || !UUID.test(id)) return;
+  await decideDraft(lab.id, id, person.id, null);
+  revalidatePath(`/${lab.slug}`, "layout");
+}
+
+export async function dropAllWaiting(slug: string): Promise<void> {
+  const { lab, person, isAdmin } = await requireMember(slug);
+  if (!isAdmin) return;
+  await dropWaiting(lab.id, person.id);
+  revalidatePath(`/${lab.slug}`, "layout");
 }

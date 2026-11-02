@@ -14,6 +14,7 @@ It starts with two labs, the Murray Lab at Dartmouth and the Clay Space Lab at N
 - **People and alumni.** Admins invite people with a link, which can be limited to some email domains. They can also make people admins or alumni. Alumni keep reading and answering, and what anyone wrote stays under their name after they leave.
 - **Code.** The lab's GitHub organizations, listed newest first and searchable.
 - **Keep a copy.** Any member can download the whole lab as Markdown, or as JSON with every version.
+- **Start from the lab's Slack.** Years of answers are already sitting there. A model on your own computer turns them into drafts, and an admin keeps, fixes or drops each one.
 
 Each new lab starts with the questions nearly every lab gets asked, left open for the people who know. Thanos makes nothing up about a lab. The only answers it starts with are how Thanos works and where the lab's GitHub is.
 
@@ -29,6 +30,22 @@ Open [http://127.0.0.1:4848](http://127.0.0.1:4848). A local copy:
 - keeps its database in `.thanos/`, using [PGlite](https://pglite.dev) (Postgres compiled to WebAssembly), so there's nothing to install;
 - starts with the Murray Lab and the Clay Space Lab and their starter questions, and lets you join either;
 - sends no email: the sign-in link shows on the page instead, and only when the page is opened from this computer.
+
+## Start from the lab's Slack
+
+```bash
+npm run import-slack -- --from <folder> --lab <slug> --dry-run     # count first, no model
+npm run import-slack -- --from <folder> --lab <slug> --channels questions,general
+```
+
+- **`<folder>`** is an export from Slack, unzipped, or one workspace in Proxenos's copy, `~/proxenos_vault/raw/slack/<workspace>`. You get an export from Slack's settings, under Import/export data.
+- **Only public channels are read,** never direct messages, group messages or private channels. The importer looks at each conversation that starts with a question and got a reply.
+- **A model in [Ollama](https://ollama.com) on your computer** writes each conversation worth keeping as a draft card and passes over the rest. The default is `gemma4:26b`, at about 8 seconds a conversation. Nothing leaves the computer, and it costs nothing.
+- **Drafts go to `.thanos/imports/<slug>-drafts.jsonl`.** Add that file on the lab's Review page (Settings, then Review drafts). An admin keeps, fixes or drops each draft, and nothing reaches the lab until then.
+- **A kept card says where it came from:** the channel, the month and who took part. It counts as answered when they answered, so an old answer is marked as possibly out of date until someone says it's still right.
+- **A run can stop and start again.** Conversations already read are listed in `<slug>-seen.tsv`. Everything under `.thanos/` stays out of git.
+
+Tell the lab's PI before its Slack goes in.
 
 ## Host it for a lab
 

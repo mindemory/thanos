@@ -7,6 +7,7 @@ import { TOPICS } from "@/lib/topics";
 export const dynamic = "force-dynamic";
 
 function byline(c: CardSummary): string {
+  if (c.source) return [`from ${c.source}`, `added by ${c.askedBy ?? "Thanos"}`, c.checkedAt ? `checked ${monthYear(c.checkedAt)}` : null].filter(Boolean).join(" · ");
   const parts = [
     c.askedBy && c.askedBy !== c.answeredBy ? `asked by ${c.askedBy}` : null,
     `${c.askedBy && c.askedBy !== c.answeredBy ? "answered" : "written"} by ${c.answeredBy ?? "Thanos"}, ${monthYear(c.answeredAt ?? c.createdAt)}`,
