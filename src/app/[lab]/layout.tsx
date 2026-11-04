@@ -3,11 +3,12 @@ import { LabShell } from "@/components/lab/LabShell";
 import { Note } from "@/components/ui";
 import { currentPerson, nameOf } from "@/lib/auth";
 import { labCards } from "@/lib/cards";
-import { cardDoc, repoDoc } from "@/lib/docs";
-import { draftCounts } from "@/lib/drafts";
+import { cardDoc, projectDoc, repoDoc } from "@/lib/docs";
+import { draftCounts, projectDraftCounts } from "@/lib/drafts";
 import { dayMonth } from "@/lib/format";
 import { labRepos } from "@/lib/github";
 import { helpingIn, labBySlug, requireMember, roleIn, supportOpen } from "@/lib/labs";
+import { labProjects } from "@/lib/projects";
 
 export const dynamic = "force-dynamic";
 
@@ -20,26 +21,28 @@ export async function generateMetadata({ params }: { params: Promise<{ lab: stri
 }
 
 /**
- * Every lab page: only for its members, in the lab's frame, with the lab's whole memory (cards
- * and repositories) handed to the browser once for search.
+ * Every lab page: only for its members, in the lab's frame, with the lab's whole memory (cards,
+ * projects and repositories) handed to the browser once for search.
  */
 export default async function LabLayout({ children, params }: { children: React.ReactNode; params: Promise<{ lab: string }> }) {
   const { lab: slug } = await params;
   const { person, lab, isAdmin } = await requireMember(slug);
-  const [cards, { repos }, drafts] = await Promise.all([
+  const [cards, projects, { repos }, drafts] = await Promise.all([
     labCards(lab.id),
+    labProjects(lab.id),
     labRepos(lab.github),
-    isAdmin ? draftCounts(lab.id) : null,
+    isAdmin ? Promise.all([draftCounts(lab.id), projectDraftCounts(lab.id)]) : null,
   ]);
-  const docs = [...cards.map((c) => cardDoc(lab.slug, c)), ...repos.map(repoDoc)];
+  const docs = [...cards.map((c) => cardDoc(lab.slug, c)), ...projects.map((p) => projectDoc(lab.slug, p)), ...repos.map(repoDoc)];
+  const options = projects.map((p) => ({ id: p.id, slug: p.slug, name: p.name, status: p.status }));
   return (
-    <LabProvider value={{ slug: lab.slug, name: lab.name, docs }}>
+    <LabProvider value={{ slug: lab.slug, name: lab.name, docs, projects: options }}>
       <LabShell
         slug={lab.slug}
         name={lab.name}
         institution={lab.institution}
         open={cards.filter((c) => c.open).length}
-        review={drafts?.waiting ?? 0}
+        review={drafts ? drafts[0].waiting + drafts[1].waiting : 0}
         personName={nameOf(person)}
       >
         {supportOpen(lab) && (

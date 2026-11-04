@@ -18,6 +18,7 @@ export interface CardDraft {
   answer: string;
   topic: string;
   tags: string;
+  project: string | null;
   open: boolean;
 }
 
@@ -59,12 +60,15 @@ export function CardForm({
   card,
   initialQuestion = "",
   initialMode = "ask",
+  initialProject = "",
 }: {
   card?: CardDraft;
   initialQuestion?: string;
   initialMode?: "ask" | "write";
+  initialProject?: string; // a project's address, from its page's "Add a card about it"
 }) {
-  const { slug } = useLab();
+  const { slug, projects } = useLab();
+  const project = card ? (card.project ?? "") : (projects.find((p) => p.slug === initialProject)?.id ?? "");
   const index = useSearchIndex();
   const [state, formProps, pending] = useFormAction<FormState>(saveCard, {});
   const [mode, setMode] = useState<"ask" | "write">(card ? "write" : initialMode);
@@ -147,6 +151,18 @@ export function CardForm({
         <Field label="Other words for it" hint="What else someone might search for, separated by commas: p-card, chart string.">
           <input name="tags" defaultValue={card?.tags ?? ""} maxLength={300} className={INPUT} />
         </Field>
+        {projects.length > 0 && (
+          <Field label="Project" hint="If it's about one of the lab's projects, it shows on the project's page too.">
+            <select name="project" defaultValue={project} className={INPUT}>
+              <option value="">None</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
       </div>
 
       {editing && (

@@ -22,7 +22,11 @@ export default async function AskPage({
         nobody has to work it out again.
       </p>
       <div className="mt-8">
-        <CardForm initialQuestion={one(query.q) ?? ""} initialMode={one(query.mode) === "write" ? "write" : "ask"} />
+        <CardForm
+          initialQuestion={one(query.q) ?? ""}
+          initialMode={one(query.mode) === "write" ? "write" : "ask"}
+          initialProject={one(query.project) ?? ""}
+        />
       </div>
     </div>
   );

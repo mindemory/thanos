@@ -1,13 +1,16 @@
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, FolderKanban } from "lucide-react";
 import Link from "next/link";
 
 import { CardRow } from "@/components/lab/CardRow";
 import { HomeSearch } from "@/components/lab/HomeSearch";
+import { peopleLine, StatusBadge } from "@/components/lab/ProjectRow";
 import { TopicIcon } from "@/components/TopicIcon";
 import { QUIET } from "@/components/ui";
 import { labCards, labContributors, mayBeStale } from "@/lib/cards";
 import { plural } from "@/lib/format";
 import { requireMember } from "@/lib/labs";
+import { labProjects } from "@/lib/projects";
+import { finished, span } from "@/lib/timeline";
 import { TOPICS } from "@/lib/topics";
 
 function Section({ title, more, children }: { title: string; more?: React.ReactNode; children: React.ReactNode }) {
@@ -25,7 +28,10 @@ function Section({ title, more, children }: { title: string; more?: React.ReactN
 export default async function LabHome({ params }: { params: Promise<{ lab: string }> }) {
   const { lab: slug } = await params;
   const { lab } = await requireMember(slug);
-  const [cards, contributors] = await Promise.all([labCards(lab.id), labContributors(lab.id)]);
+  const [cards, contributors, projects] = await Promise.all([labCards(lab.id), labContributors(lab.id), labProjects(lab.id)]);
+  const underway = projects
+    .filter((p) => !finished(p.status))
+    .sort((a, b) => (a.status === b.status ? 0 : a.status === "active" ? -1 : 1) || (b.started ?? 0) - (a.started ?? 0));
   const answered = cards.filter((c) => !c.open);
   const open = cards
     .filter((c) => c.open)
@@ -91,6 +97,36 @@ export default async function LabHome({ params }: { params: Promise<{ lab: strin
               ))}
             </ul>
           </Section>
+
+          {underway.length > 0 && (
+            <Section
+              title="Projects under way"
+              more={
+                <Link href={`/${slug}/projects`} className={QUIET}>
+                  All {projects.length} <ArrowRight size={14} aria-hidden="true" />
+                </Link>
+              }
+            >
+              <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {underway.slice(0, 6).map((p) => (
+                  <li key={p.id}>
+                    <Link href={`/${slug}/p/${p.slug}`} className="tile tile-hover flex h-full gap-3 p-3.5">
+                      <FolderKanban size={18} className="mt-0.5 flex-shrink-0 text-accent" aria-hidden="true" />
+                      <span className="min-w-0">
+                        <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                          <span className="text-ink">{p.name}</span>
+                          {p.status !== "active" && <StatusBadge status={p.status} />}
+                        </span>
+                        <span className="mt-0.5 block text-xs leading-relaxed text-faint tabular-nums">
+                          {[span(p.started, p.ended, p.status), peopleLine(p, 3)].filter(Boolean).join(" · ")}
+                        </span>
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          )}
 
           {recent.length > 0 && (
             <Section title="Recently added or changed">

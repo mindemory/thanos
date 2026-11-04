@@ -5,12 +5,21 @@ import { createContext, useContext, useMemo } from "react";
 import { buildIndex, highlight, type Doc, type Index } from "@/lib/search";
 
 // The lab every page under /[lab] is about, and its whole memory as search documents, sent once
-// by the lab's layout. Search, and the "already in Thanos?" check when someone asks, read it here.
+// by the lab's layout. Search, and the "already in Thanos?" check when someone asks, read it here,
+// and a card's form finds the lab's projects here.
+
+export interface ProjectOption {
+  id: string;
+  slug: string;
+  name: string;
+  status: string;
+}
 
 export interface LabClient {
   slug: string;
   name: string;
   docs: Doc[];
+  projects: ProjectOption[];
 }
 
 const LabContext = createContext<LabClient | null>(null);

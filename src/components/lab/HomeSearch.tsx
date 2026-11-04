@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, BookOpen, FolderGit2, MessageCirclePlus, MessageCircleQuestionMark, Search } from "lucide-react";
+import { ArrowRight, BookOpen, FolderGit2, FolderKanban, MessageCirclePlus, MessageCircleQuestionMark, Search } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
@@ -18,7 +18,7 @@ function isTyping(target: EventTarget | null): boolean {
 
 function ResultRow({ hit, active, onHover }: { hit: Hit; active: boolean; onHover: () => void }) {
   const { doc, terms } = hit;
-  const Icon = doc.kind === "repo" ? FolderGit2 : doc.open ? MessageCircleQuestionMark : BookOpen;
+  const Icon = doc.kind === "repo" ? FolderGit2 : doc.kind === "project" ? FolderKanban : doc.open ? MessageCircleQuestionMark : BookOpen;
   const className = cn("tile tile-hover flex gap-3 p-3.5", active && "border-accent/50 bg-surface-2");
   const inner = (
     <>
@@ -33,7 +33,7 @@ function ResultRow({ hit, active, onHover }: { hit: Hit; active: boolean; onHove
           </span>
         )}
         <span className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-faint tabular-nums">
-          <span>{doc.kind === "repo" ? "Code on GitHub" : topicOf(doc.topic).label}</span>
+          <span>{doc.kind === "repo" ? "Code on GitHub" : (doc.meta ?? topicOf(doc.topic).label)}</span>
           {doc.open && <span className="text-warn-ink">Open question</span>}
           {doc.helped > 0 && <span className="num">Helped {doc.helped}</span>}
         </span>

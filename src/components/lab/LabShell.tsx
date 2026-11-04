@@ -2,6 +2,8 @@
 
 import {
   FolderGit2,
+  FolderKanban,
+  History,
   House,
   Inbox,
   MessageCirclePlus,
@@ -22,15 +24,17 @@ interface NavItem {
   label: string;
   short: string;
   icon: LucideIcon;
-  phone: boolean; // in the tab bar on a phone; Settings sits in the top bar there
+  phone: boolean; // in the tab bar on a phone; Settings sits in the top bar there, History is linked from Projects and People
 }
 
 const NAV: NavItem[] = [
   { path: "", label: "Home", short: "Home", icon: House, phone: true },
   { path: "/ask", label: "Ask or add", short: "Ask", icon: MessageCirclePlus, phone: true },
   { path: "/open", label: "Open questions", short: "Open", icon: MessageCircleQuestionMark, phone: true },
+  { path: "/projects", label: "Projects", short: "Projects", icon: FolderKanban, phone: true },
   { path: "/people", label: "People", short: "People", icon: Users, phone: true },
   { path: "/code", label: "Code", short: "Code", icon: FolderGit2, phone: true },
+  { path: "/history", label: "History", short: "History", icon: History, phone: false },
   { path: "/review", label: "Review", short: "Review", icon: Inbox, phone: false }, // admins, while drafts wait
   { path: "/settings", label: "Settings", short: "Settings", icon: SlidersHorizontal, phone: false },
 ];
@@ -78,7 +82,7 @@ export function LabShell({ slug, name, institution, open, review, personName, ch
   const isActive = (item: NavItem) =>
     item.path === ""
       ? pathname === base || pathname.startsWith(`${base}/c/`) || pathname.startsWith(`${base}/t/`)
-      : pathname.startsWith(base + item.path);
+      : pathname.startsWith(base + item.path) || (item.path === "/projects" && pathname.startsWith(`${base}/p/`));
 
   return (
     <div className="flex min-h-dvh">
@@ -163,7 +167,7 @@ export function LabShell({ slug, name, institution, open, review, personName, ch
         aria-label={`${name}, on a phone`}
         className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-bg/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
       >
-        <ul className="grid grid-cols-5">
+        <ul className="grid grid-cols-6">
           {NAV.filter((item) => item.phone).map((item) => {
             const active = isActive(item);
             const count = item.path === "/open" ? open : 0;

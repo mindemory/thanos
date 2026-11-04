@@ -13,6 +13,7 @@ export interface CardSummary {
   topic: string;
   tags: string;
   source: string; // where a card kept from the lab's chat came from; empty for one written here
+  project: { id: string; slug: string; name: string } | null; // the project it's about, if any
   open: boolean;
   helped: number;
   wanted: number;
@@ -28,12 +29,13 @@ const who = (alias: string) => `coalesce(${alias}.name, split_part(${alias}.emai
 
 const SUMMARY = `
   select c.id, c.question, c.answer, c.topic, c.tags, c.source, c.created_at, c.updated_at, c.answered_at, c.checked_at,
-    ${who("pa")} as asked_by, ${who("pb")} as answered_by,
+    ${who("pa")} as asked_by, ${who("pb")} as answered_by, pj.id as project_id, pj.slug as project_slug, pj.name as project_name,
     (select count(*)::int from reactions r where r.card_id = c.id and r.kind = 'helped') as helped,
     (select count(*)::int from reactions r where r.card_id = c.id and r.kind = 'wanted') as wanted
   from cards c
   left join people pa on pa.id = c.asked_by
-  left join people pb on pb.id = c.answered_by`;
+  left join people pb on pb.id = c.answered_by
+  left join projects pj on pj.id = c.project_id and pj.lab_id = c.lab_id and pj.removed_at is null`;
 
 function toSummary(r: Row): CardSummary {
   return {
@@ -43,6 +45,7 @@ function toSummary(r: Row): CardSummary {
     topic: String(r.topic),
     tags: String(r.tags),
     source: String(r.source ?? ""),
+    project: r.project_id ? { id: String(r.project_id), slug: String(r.project_slug), name: String(r.project_name) } : null,
     open: !r.answer,
     helped: Number(r.helped),
     wanted: Number(r.wanted),
@@ -121,13 +124,14 @@ export interface CardInput {
   answer: string;
   topic: string;
   tags: string;
+  project: string | null; // a project in the same lab, checked before it gets here
   note: string;
 }
 
 async function keepVersion(q: Db, cardId: string, personId: string, input: CardInput) {
   await q.query(
-    "insert into revisions (card_id, question, answer, topic, tags, note, edited_by) values ($1, $2, $3, $4, $5, $6, $7)",
-    [cardId, input.question, input.answer, input.topic, input.tags, input.note, personId],
+    "insert into revisions (card_id, question, answer, topic, tags, project_id, note, edited_by) values ($1, $2, $3, $4, $5, $6, $7, $8)",
+    [cardId, input.question, input.answer, input.topic, input.tags, input.project, input.note, personId],
   );
 }
 
@@ -136,12 +140,12 @@ export async function insertCard(labId: string, personId: string, input: CardInp
   const q = await db();
   const answered = input.answer !== "";
   const [row] = await q.query<{ id: string }>(
-    `insert into cards (lab_id, question, answer, topic, tags, asked_by, updated_by,
+    `insert into cards (lab_id, question, answer, topic, tags, project_id, asked_by, updated_by,
        answered_by, answered_at, checked_by, checked_at)
-     values ($1, $2, $3, $4, $5, $6, $6,
+     values ($1, $2, $3, $4, $5, $8, $6, $6,
        case when $7 then $6::uuid end, case when $7 then now() end, case when $7 then $6::uuid end, case when $7 then now() end)
      returning id`,
-    [labId, input.question, input.answer, input.topic, input.tags, personId, answered],
+    [labId, input.question, input.answer, input.topic, input.tags, personId, answered, input.project],
   );
   await keepVersion(q, row.id, personId, input);
   return row.id;
@@ -168,13 +172,13 @@ export async function updateCard(
   const changed = before.answer !== input.answer && input.answer !== "";
   const cleared = input.answer === "";
   await q.query(
-    `update cards set question = $2, answer = $3, topic = $4, tags = $5, updated_at = now(), updated_by = $6,
+    `update cards set question = $2, answer = $3, topic = $4, tags = $5, project_id = $10, updated_at = now(), updated_by = $6,
        answered_by = case when $7 then $6::uuid when $9 then null else answered_by end,
        answered_at = case when $7 then now() when $9 then null else answered_at end,
        checked_by = case when $8 then $6::uuid else checked_by end,
        checked_at = case when $8 then now() else checked_at end
      where id = $1`,
-    [id, input.question, input.answer, input.topic, input.tags, personId, firstAnswer, changed, cleared],
+    [id, input.question, input.answer, input.topic, input.tags, personId, firstAnswer, changed, cleared, input.project],
   );
   await keepVersion(q, id, personId, input);
   return { firstAnswer, askedBy: before.asked_by };
@@ -192,9 +196,9 @@ export async function insertKeptCard(
 ): Promise<string> {
   const q = await db();
   const [row] = await q.query<{ id: string }>(
-    `insert into cards (lab_id, question, answer, topic, tags, source, asked_by, updated_by, answered_at)
-     values ($1, $2, $3, $4, $5, $6, $7, $7, coalesce($8::timestamptz, now())) returning id`,
-    [labId, input.question, input.answer, input.topic, input.tags, input.source, personId, input.dated],
+    `insert into cards (lab_id, question, answer, topic, tags, project_id, source, asked_by, updated_by, answered_at)
+     values ($1, $2, $3, $4, $5, $9, $6, $7, $7, coalesce($8::timestamptz, now())) returning id`,
+    [labId, input.question, input.answer, input.topic, input.tags, input.source, personId, input.dated, input.project],
   );
   await keepVersion(q, row.id, personId, input);
   return row.id;
@@ -257,12 +261,13 @@ export interface ExportRevision extends Revision {
   cardId: string;
   topic: string;
   tags: string;
+  projectId: string | null;
 }
 
 /** Every version of every card in a lab, oldest first, for an export. */
 export async function labRevisions(labId: string): Promise<ExportRevision[]> {
   const rows = await (await db()).query(
-    `select r.id, r.card_id, r.question, r.answer, r.topic, r.tags, r.note, r.edited_at, ${who("p")} as edited_by
+    `select r.id, r.card_id, r.question, r.answer, r.topic, r.tags, r.project_id, r.note, r.edited_at, ${who("p")} as edited_by
      from revisions r join cards c on c.id = r.card_id left join people p on p.id = r.edited_by
      where c.lab_id = $1 and c.removed_at is null order by r.edited_at, r.id`,
     [labId],
@@ -274,6 +279,7 @@ export async function labRevisions(labId: string): Promise<ExportRevision[]> {
     answer: String(v.answer),
     topic: String(v.topic),
     tags: String(v.tags),
+    projectId: (v.project_id as string | null) ?? null,
     note: String(v.note),
     editedBy: (v.edited_by as string | null) ?? null,
     editedAt: iso(v.edited_at),

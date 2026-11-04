@@ -1,7 +1,7 @@
 import MiniSearch from "minisearch";
 
-// Search over a lab's whole memory, in the browser: every card and repository is on the page
-// already, so a search costs nothing and answers as fast as someone types. Words are reduced to
+// Search over a lab's whole memory, in the browser: every card, project and repository is on the
+// page already, so a search costs nothing and answers as fast as someone types. Words are reduced to
 // a common stem (scans, scanning, scanned all search as "scan"), and a question's words also
 // look for the other words labs use for the same thing, at a lower weight.
 //
@@ -9,7 +9,7 @@ import MiniSearch from "minisearch";
 
 export interface Doc {
   id: string;
-  kind: "card" | "repo";
+  kind: "card" | "repo" | "project";
   title: string;
   body: string;
   tags: string;
@@ -18,6 +18,7 @@ export interface Doc {
   helped: number;
   href: string;
   updatedAt: string;
+  meta?: string; // what a result says under its snippet, when it isn't a card's topic
 }
 
 export interface Hit {

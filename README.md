@@ -1,21 +1,23 @@
 # Thanos
 
-A lab's memory. What people in a lab work out over the years (which grant pays for scans, what the chart string is, who holds the lab card, which toolboxes, where the code lives) kept in one place to search, and still there after the people who knew have moved on. Nobody has to ask the advisor, or the postdoc who left, the same question every year.
+A lab's memory. What people in a lab work out over the years (which grant pays for scans, what the chart string is, who holds the lab card, which toolboxes, where the code lives) kept in one place to search, and still there after the people who knew have moved on. Nobody has to ask the advisor, or the postdoc who left, the same question every year. And the lab's projects stay findable for as long as the lab lasts: who worked on each one, where its code and data are, and what came of it.
 
 It starts with two labs, the Murray Lab at Dartmouth and the Clay Space Lab at NYU, and works for any group that keeps relearning the same things.
 
 ## What it does
 
-- **Search before you ask.** Every question, every answer and the lab's GitHub repositories, searched as you type, in the browser. Forms of a word meet (scans, scanning, scanned), and so do the other words labs use for the same thing (MRI, scan, fMRI; grant, chart string, pay). `/` jumps to the search box.
+- **Search before you ask.** Every question, every answer, every project and the lab's GitHub repositories, searched as you type, in the browser. Forms of a word meet (scans, scanning, scanned), and so do the other words labs use for the same thing (MRI, scan, fMRI; grant, chart string, pay). `/` jumps to the search box.
 - **Ask once.** While you type a question, Thanos lists the cards that may already answer it. If none does, the question goes on the lab's Open list for whoever knows, and the asker gets an email when it's answered (once email is set up).
 - **Anyone can answer or improve anything.** Every version of a card is kept with who wrote it, so an edit never loses anything.
 - **Still right?** Anyone can say an answer is still right. One that nobody has checked in a year is marked as possibly out of date. Editing an answer counts as checking it.
 - **Secrets stay out.** Saving something that looks like a card number, a password, a key or a Social Security number asks first, because everyone in the lab can read it, including people who join years from now. A card should say who holds the card and how to ask them.
 - **People and alumni.** Admins invite people by email, or with a link that can be limited to some email domains. They can also make people admins or alumni. Alumni keep reading and answering, and what anyone wrote stays under their name after they leave.
 - **Code.** The lab's GitHub organizations, listed newest first and searchable.
+- **Projects.** Each project has a page: whether it's active, paused, done or published, its years, who is on it (alumni too, and people who never joined Thanos, by name), its repositories, where its data lives, its Slack channel, its papers by DOI, and the cards about it. Anyone in the lab can start one or bring it up to date, and every version is kept.
+- **History.** The lab year by year: who joined and who left, which projects started and finished, and the papers that came out. Someone made an alum is marked as leaving that day, and the years people were really in the lab can go on the People page.
 - **Keep a copy.** Any member can download the whole lab as Markdown, or as JSON with every version.
 - **Private to the lab.** Only its members see it. Whoever runs a hosted copy can't either, unless the lab's admins let them in for a week, which every member sees. An admin can delete the lab, and everything in it, at any time.
-- **Start from the lab's Slack.** Years of answers are already sitting there. A model on your own computer turns them into drafts, and an admin keeps, fixes or drops each one.
+- **Start from the lab's Slack and GitHub.** Years of answers are already sitting in Slack, and the lab's projects have channels of their own. A model on your own computer turns them into draft cards and projects, the lab's GitHub suggests projects too, and an admin keeps, fixes or drops each one.
 
 Each new lab starts with the questions nearly every lab gets asked, left open for the people who know. Thanos makes nothing up about a lab. The only answers it starts with are how Thanos works and where the lab's GitHub is.
 
@@ -37,6 +39,7 @@ Open [http://127.0.0.1:4848](http://127.0.0.1:4848). A local copy:
 ```bash
 npm run import-slack -- --from <folder> --lab <slug> --dry-run     # count first, no model
 npm run import-slack -- --from <folder> --lab <slug> --channels questions,general
+npm run import-slack -- --from <folder> --lab <slug> --projects    # the channels that are projects
 ```
 
 - **`<folder>`** is an export from Slack, unzipped, or one workspace in Proxenos's copy, `~/proxenos_vault/raw/slack/<workspace>`. You get an export from Slack's settings, under Import/export data.
@@ -45,6 +48,7 @@ npm run import-slack -- --from <folder> --lab <slug> --channels questions,genera
 - **Drafts go to `.thanos/imports/<slug>-drafts.jsonl`.** Add that file on the lab's Review page (Settings, then Review drafts). An admin keeps, fixes or drops each draft, and nothing reaches the lab until then.
 - **A kept card says where it came from:** the channel, the month and who took part. It counts as answered when they answered, so an old answer is marked as possibly out of date until someone says it's still right.
 - **A run can stop and start again.** Conversations already read are listed in `<slug>-seen.tsv`. Everything under `.thanos/` stays out of git.
+- **With `--projects`** it reads each public channel as a whole, and the model says which ones clearly belong to one project (a study, an analysis, a thesis) and what each project is. The rest of a draft comes from the channel itself: its years from its first and last messages, its people from who wrote in it, and only the repositories, paths and DOIs its messages contain. It takes about 20 seconds a channel, and the drafts go to `.thanos/imports/<slug>-projects.jsonl`, for the same Review page. There, *Suggest projects from GitHub* drafts one for each of the lab's own repositories that no project has yet, and a repository named like a channel's project joins that draft.
 
 Tell the lab's PI before its Slack goes in.
 
@@ -91,11 +95,12 @@ None are needed on your own computer. See [.env.example](.env.example).
 - Search runs in the browser with [MiniSearch](https://github.com/lucaong/minisearch), plus a small stemmer and a list of lab synonyms ([src/lib/search.ts](src/lib/search.ts)). A search costs nothing and calls no model.
 - A card puts its answer straight under the question. Answers are Markdown with code blocks and tables. Paths, commands and chart strings are set in Geist Mono with a copy button, whether or not they're in backticks ([src/lib/values.ts](src/lib/values.ts)). Why it reads this way, and which of a lab's other tools to connect next: [docs/reading-and-integrations.md](docs/reading-and-integrations.md).
 - The secret check is [src/lib/sensitive.ts](src/lib/sensitive.ts).
+- A project's papers are looked up at doi.org by their DOIs when the project is saved, for their titles, authors and years. Only the DOI goes with the question ([src/lib/papers.ts](src/lib/papers.ts)). History is put together from those years, the projects' own and the people's ([src/lib/timeline.ts](src/lib/timeline.ts)).
 
 ## Checks
 
 ```bash
-npm test             # search and the secret check: no network, no database
+npm test             # search, the secret check, and reading projects and papers: no network, no database
 npm run lint         # with eslint-plugin-jsx-a11y's recommended rules
 npx tsc --noEmit
 npm run build

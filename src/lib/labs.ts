@@ -229,7 +229,8 @@ export interface Member {
   name: string;
   role: Role;
   title: string;
-  joinedAt: string;
+  joinedAt: string; // when they joined the lab, as far as Thanos knows: joining Thanos, unless someone said otherwise
+  leftAt: string | null; // when they became an alum, the same way
   answered: number;
   asking: number;
   edits: number;
@@ -238,7 +239,7 @@ export interface Member {
 /** Everyone in a lab, admins first and alumni last, with what each has given it. */
 export async function labMembers(labId: string): Promise<Member[]> {
   const rows = await (await db()).query(
-    `select p.id, p.email, coalesce(p.name, split_part(p.email, '@', 1)) as name, m.role, m.title, m.joined_at,
+    `select p.id, p.email, coalesce(p.name, split_part(p.email, '@', 1)) as name, m.role, m.title, m.joined_at, m.left_at,
        (select count(*)::int from cards c where c.lab_id = m.lab_id and c.removed_at is null and c.answered_by = p.id) as answered,
        (select count(*)::int from cards c where c.lab_id = m.lab_id and c.removed_at is null and c.asked_by = p.id and c.answer = '') as asking,
        (select count(*)::int from revisions r join cards c on c.id = r.card_id where c.lab_id = m.lab_id and r.edited_by = p.id) as edits
@@ -253,6 +254,7 @@ export async function labMembers(labId: string): Promise<Member[]> {
     role: r.role as Role,
     title: String(r.title),
     joinedAt: iso(r.joined_at),
+    leftAt: isoOrNull(r.left_at),
     answered: Number(r.answered),
     asking: Number(r.asking),
     edits: Number(r.edits),

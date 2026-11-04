@@ -2,6 +2,8 @@ import { currentPerson } from "@/lib/auth";
 import { labCards, labRevisions, type CardSummary } from "@/lib/cards";
 import { monthYear } from "@/lib/format";
 import { helpingIn, labBySlug, roleIn } from "@/lib/labs";
+import { labProjects, labProjectVersions, type Project } from "@/lib/projects";
+import { span, statusLabel } from "@/lib/timeline";
 import { TOPICS } from "@/lib/topics";
 
 export const dynamic = "force-dynamic";
@@ -17,10 +19,35 @@ function byline(c: CardSummary): string {
   return parts.filter(Boolean).join(" · ");
 }
 
-function markdown(name: string, cards: CardSummary[], date: string): string {
+/** A project in Markdown: how it stands, who, and where everything is, then what it is. */
+function projectMarkdown(p: Project): string[] {
+  const people = [...p.people.map((x) => x.name), ...p.others].join(", ");
+  const lines = [
+    `### ${p.name}`,
+    "",
+    `*${[statusLabel(p.status), span(p.started, p.ended, p.status), people].filter(Boolean).join(" · ")}*`,
+    "",
+  ];
+  if (p.summary) lines.push(p.summary, "");
+  const facts = [
+    ...p.repos.map((r) => `- Code: [${r}](https://github.com/${r})`),
+    ...p.data.map((d) => `- Data: \`${d}\``),
+    p.slack ? `- Slack: ${p.slack}` : null,
+    ...p.papers.map((x) => `- Paper: ${x.title ? `${x.title}${x.detail ? `, ${x.detail}` : ""}${x.year ? `, ${x.year}` : ""}. ` : ""}https://doi.org/${x.doi}`),
+  ].filter((l): l is string => Boolean(l));
+  if (facts.length) lines.push(...facts, "");
+  return lines;
+}
+
+function markdown(name: string, cards: CardSummary[], projects: Project[], date: string): string {
   const answered = cards.filter((c) => !c.open);
   const open = cards.filter((c) => c.open);
-  const out = [`# ${name}`, "", `What the lab knows, from Thanos, ${date}: ${answered.length} answers and ${open.length} open questions.`, ""];
+  const out = [
+    `# ${name}`,
+    "",
+    `What the lab knows, from Thanos, ${date}: ${answered.length} answers, ${open.length} open questions and ${projects.length} projects.`,
+    "",
+  ];
   for (const topic of TOPICS) {
     const here = answered.filter((c) => c.topic === topic.id).sort((a, b) => a.question.localeCompare(b.question));
     if (!here.length) continue;
@@ -31,6 +58,10 @@ function markdown(name: string, cards: CardSummary[], date: string): string {
     out.push("## Still open", "");
     for (const c of open) out.push(`- ${c.question} (asked ${c.askedBy ? `by ${c.askedBy}, ` : ""}${monthYear(c.createdAt)})`);
     out.push("");
+  }
+  if (projects.length) {
+    out.push("## Projects", "");
+    for (const p of projects) out.push(...projectMarkdown(p));
   }
   return out.join("\n");
 }
@@ -44,7 +75,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ lab:
   if (!lab) return new Response("No such lab.\n", { status: 404 });
   if (!(await roleIn(lab.id, person.id)) && !helpingIn(person, lab)) return new Response("You aren't in this lab.\n", { status: 403 });
 
-  const cards = await labCards(lab.id);
+  const [cards, projects] = await Promise.all([labCards(lab.id), labProjects(lab.id)]);
   const date = new Date().toISOString().slice(0, 10);
   const file = `${lab.slug}-thanos-${date}`;
   const headers = (type: string, ext: string) => ({
@@ -54,13 +85,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ lab:
   });
 
   if (new URL(request.url).searchParams.get("format") === "json") {
-    const revisions = await labRevisions(lab.id);
+    const [revisions, projectVersions] = await Promise.all([labRevisions(lab.id), labProjectVersions(lab.id)]);
     const body = {
       lab: { name: lab.name, institution: lab.institution, website: lab.website, github: lab.github },
       exportedAt: new Date().toISOString(),
       cards: cards.map((c) => ({ ...c, versions: revisions.filter((v) => v.cardId === c.id) })),
+      projects: projects.map((p) => ({ ...p, versions: projectVersions.filter((v) => v.projectId === p.id) })),
     };
     return new Response(JSON.stringify(body, null, 2), { headers: headers("application/json", "json") });
   }
-  return new Response(markdown(lab.name, cards, date), { headers: headers("text/markdown", "md") });
+  return new Response(markdown(lab.name, cards, projects, date), { headers: headers("text/markdown", "md") });
 }

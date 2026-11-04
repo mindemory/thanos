@@ -1,9 +1,14 @@
+import { ArrowRight } from "lucide-react";
+import Link from "next/link";
+
 import { ConfirmSubmit } from "@/components/client";
 import { InviteForm, MemberForm } from "@/components/forms";
 import { QUIET } from "@/components/ui";
 import { cancelInviteAction, removeMember } from "@/lib/actions";
 import { monthYear } from "@/lib/format";
 import { labMembers, pendingInvites, requireMember, type Member } from "@/lib/labs";
+import { labProjects } from "@/lib/projects";
+import { yearOf } from "@/lib/timeline";
 
 export const metadata = { title: "People" };
 
@@ -20,12 +25,17 @@ export default async function PeoplePage({ params }: { params: Promise<{ lab: st
   const { lab: slug } = await params;
   // Managing people is for the lab's own admins, not for someone running Thanos they've let in.
   const { lab, person, ownAdmin } = await requireMember(slug);
-  const [members, invited] = await Promise.all([labMembers(lab.id), ownAdmin ? pendingInvites(lab.id) : Promise.resolve([])]);
+  const [members, invited, projects] = await Promise.all([
+    labMembers(lab.id),
+    ownAdmin ? pendingInvites(lab.id) : Promise.resolve([]),
+    labProjects(lab.id),
+  ]);
   const current = members.filter((m) => m.role !== "alum");
   const alumni = members.filter((m) => m.role === "alum");
+  const projectsOf = (id: string) => projects.filter((p) => p.people.some((x) => x.id === id));
 
   const row = (m: Member) => (
-    <li key={m.id} className="tile p-4">
+    <li key={m.id} id={`person-${m.id}`} className="tile scroll-mt-20 p-4">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <p className="title-3">{m.name}</p>
         {m.role === "admin" && <span className="rounded-full border border-accent/40 px-2 text-xs text-accent">Admin</span>}
@@ -36,11 +46,33 @@ export default async function PeoplePage({ params }: { params: Promise<{ lab: st
         <a href={`mailto:${m.email}`} className="hover:text-ink">
           {m.email}
         </a>
-        <span>Joined {monthYear(m.joinedAt)}</span>
+        <span>Joined {yearOf(m.joinedAt)}</span>
+        {m.leftAt && <span>Left {yearOf(m.leftAt)}</span>}
         <span className="num">{given(m)}</span>
       </p>
+      {projectsOf(m.id).length > 0 && (
+        <p className="mt-1 text-sm leading-relaxed text-muted">
+          On{" "}
+          {projectsOf(m.id).map((p, i) => (
+            <span key={p.id}>
+              {i > 0 && ", "}
+              <Link href={`/${slug}/p/${p.slug}`} className="text-ink hover:text-accent">
+                {p.name}
+              </Link>
+            </span>
+          ))}
+        </p>
+      )}
       {(ownAdmin || m.id === person.id) && (
-        <MemberForm slug={slug} personId={m.id} role={m.role} title={m.title} canSetRole={ownAdmin} />
+        <MemberForm
+          slug={slug}
+          personId={m.id}
+          role={m.role}
+          title={m.title}
+          since={yearOf(m.joinedAt)}
+          left={m.leftAt ? yearOf(m.leftAt) : null}
+          canSetRole={ownAdmin}
+        />
       )}
       {ownAdmin && m.id !== person.id && (
         <form action={removeMember.bind(null, slug, m.id)} className="mt-2">
@@ -62,6 +94,9 @@ export default async function PeoplePage({ params }: { params: Promise<{ lab: st
         Who is in {lab.name}, and what each has given it. Alumni keep reading and answering after they leave, and what anyone wrote
         stays under their name.
       </p>
+      <Link href={`/${slug}/history`} className={`${QUIET} mt-3`}>
+        The lab over the years <ArrowRight size={14} aria-hidden="true" />
+      </Link>
       {ownAdmin && (
         <section className="card mt-8 p-5">
           <InviteForm slug={slug} />

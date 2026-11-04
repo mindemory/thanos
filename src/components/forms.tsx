@@ -1,6 +1,7 @@
 "use client";
 
 import { Mail } from "lucide-react";
+import { useState } from "react";
 
 import { useFormAction } from "@/components/client";
 import { BUTTON, Field, INPUT, Note, PRIMARY } from "@/components/ui";
@@ -136,21 +137,29 @@ export function LabForm({ lab, readOnly = false }: { lab?: LabValues; readOnly?:
   );
 }
 
-/** One member's role and title, for an admin; someone's own title, for them. */
+/**
+ * One member's role, title and years in the lab, for an admin; someone's own title and years, for
+ * them. The years are what the lab's History shows.
+ */
 export function MemberForm({
   slug,
   personId,
   role,
   title,
+  since,
+  left,
   canSetRole,
 }: {
   slug: string;
   personId: string;
   role: string;
   title: string;
+  since: number;
+  left: number | null;
   canSetRole: boolean;
 }) {
   const [state, formProps, pending] = useFormAction<FormState>(saveMember, {});
+  const [chosen, setChosen] = useState(role);
   return (
     <form {...formProps} className="mt-3 flex flex-wrap items-end gap-2">
       <input type="hidden" name="lab" value={slug} />
@@ -165,10 +174,32 @@ export function MemberForm({
           className={cn(INPUT, "py-1.5 text-sm")}
         />
       </label>
+      <label className="flex items-center gap-1.5 text-sm text-muted">
+        Since
+        <input name="since" defaultValue={since} inputMode="numeric" maxLength={4} className={cn(INPUT, "num w-[4.75rem] py-1.5 text-sm")} />
+      </label>
+      {chosen === "alum" && (
+        <label className="flex items-center gap-1.5 text-sm text-muted">
+          Left
+          <input
+            name="left"
+            defaultValue={left ?? ""}
+            inputMode="numeric"
+            maxLength={4}
+            placeholder={role === "alum" ? "" : String(new Date().getUTCFullYear())}
+            className={cn(INPUT, "num w-[4.75rem] py-1.5 text-sm")}
+          />
+        </label>
+      )}
       {canSetRole && (
         <label>
           <span className="sr-only">Role</span>
-          <select name="role" defaultValue={role} className={cn(INPUT, "w-auto py-1.5 text-sm")}>
+          <select
+            name="role"
+            defaultValue={role}
+            onChange={(e) => setChosen(e.target.value)}
+            className={cn(INPUT, "w-auto py-1.5 text-sm")}
+          >
             <option value="member">Member</option>
             <option value="admin">Admin</option>
             <option value="alum">Alum</option>

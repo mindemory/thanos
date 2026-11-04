@@ -73,8 +73,9 @@ export default async function SettingsPage({ params }: { params: Promise<{ lab: 
       {isAdmin && (
         <Section title="Bring in the lab's Slack">
           <p className="leading-relaxed text-muted">
-            Years of answers are already sitting in the lab&apos;s Slack. Thanos can turn its public channels into drafts, with a model
-            running on your own computer, for an admin to keep, fix or drop one by one.
+            Years of answers are already sitting in the lab&apos;s Slack, and its projects have channels of their own. Thanos can turn its
+            public channels into draft cards and projects, with a model running on your own computer, and suggest projects from the
+            lab&apos;s GitHub, for an admin to keep, fix or drop one by one.
           </p>
           <Link href={`/${slug}/review`} className={`${BUTTON} mt-4`}>
             <Inbox size={15} aria-hidden="true" /> Review drafts

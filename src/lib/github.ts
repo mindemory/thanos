@@ -8,6 +8,7 @@ export interface Repo {
   description: string;
   url: string;
   language: string | null;
+  createdAt: string;
   pushedAt: string;
   stars: number;
   fork: boolean;
@@ -20,6 +21,7 @@ interface GitHubRepo {
   description: string | null;
   html_url: string;
   language: string | null;
+  created_at: string;
   pushed_at: string;
   stargazers_count: number;
   fork: boolean;
@@ -35,6 +37,33 @@ export function githubOwners(text: string): string[] {
     .map((s) => s.trim().replace(/^https?:\/\/(www\.)?github\.com\//i, "").replace(/\/.*$/, ""))
     .filter((s) => /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/.test(s))
     .slice(0, 3); // a few, so one lab can't spend the hourly allowance every lab shares
+}
+
+const OWNER = String.raw`[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?`;
+const NAME = String.raw`[A-Za-z0-9._-]{1,100}`;
+// Pages on github.com that sit where an owner would and aren't one.
+const NOT_OWNERS = new Set(
+  "orgs settings features topics marketplace sponsors apps about login explore notifications pulls issues new organizations users search enterprise".split(
+    " ",
+  ),
+);
+
+/** A repository as owner/name, from what someone typed: owner/name, or a link to it on GitHub. */
+export function repoOf(text: string): string | null {
+  if (text.length > 300) return null;
+  const m = text
+    .trim()
+    .replace(/^(?:https?:\/\/)?(?:www\.)?github\.com\//i, "")
+    .match(new RegExp(`^(${OWNER})\\/(${NAME}?)(?:\\.git)?(?:[/#?].*)?$`));
+  return m && !NOT_OWNERS.has(m[1].toLowerCase()) && m[2] !== "." && m[2] !== ".." ? `${m[1]}/${m[2]}` : null;
+}
+
+/** Every repository some text links to on GitHub, as owner/name. */
+export function findRepos(text: string): string[] {
+  const found = [...text.matchAll(new RegExp(`github\\.com\\/(${OWNER})\\/(${NAME})`, "g"))]
+    .map((m) => repoOf(`${m[1]}/${m[2].replace(/\.git$|[.,;:]+$/, "")}`))
+    .filter((r): r is string => Boolean(r));
+  return [...new Set(found)];
 }
 
 async function ask(path: string): Promise<Response> {
@@ -76,6 +105,7 @@ export async function labRepos(github: string): Promise<{ repos: Repo[]; problem
     description: r.description ?? "",
     url: r.html_url,
     language: r.language,
+    createdAt: r.created_at,
     pushedAt: r.pushed_at,
     stars: r.stargazers_count,
     fork: r.fork,

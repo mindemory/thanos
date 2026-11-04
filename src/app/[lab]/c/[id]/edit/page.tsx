@@ -21,7 +21,15 @@ export default async function EditCardPage({ params }: { params: Promise<{ lab: 
       </p>
       <div className="mt-8">
         <CardForm
-          card={{ id: card.id, question: card.question, answer: card.answer, topic: card.topic, tags: card.tags, open: card.open }}
+          card={{
+            id: card.id,
+            question: card.question,
+            answer: card.answer,
+            topic: card.topic,
+            tags: card.tags,
+            project: card.project?.id ?? null,
+            open: card.open,
+          }}
         />
       </div>
     </div>

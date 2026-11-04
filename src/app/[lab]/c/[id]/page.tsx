@@ -1,4 +1,4 @@
-import { BadgeCheck, ChevronDown, Pencil, TriangleAlert } from "lucide-react";
+import { BadgeCheck, ChevronDown, FolderKanban, Pencil, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -117,9 +117,16 @@ export default async function CardPage({
 
   return (
     <article className="screen-in">
-      <Link href={`/${slug}/t/${topic.id}`} className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink">
-        <TopicIcon topic={topic.id} size={14} /> {topic.label}
-      </Link>
+      <p className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+        <Link href={`/${slug}/t/${topic.id}`} className="inline-flex items-center gap-1.5 text-muted hover:text-ink">
+          <TopicIcon topic={topic.id} size={14} /> {topic.label}
+        </Link>
+        {card.project && (
+          <Link href={`/${slug}/p/${card.project.slug}`} className="inline-flex items-center gap-1.5 text-muted hover:text-ink">
+            <FolderKanban size={14} aria-hidden="true" /> {card.project.name}
+          </Link>
+        )}
+      </p>
       <h1 className="title-1 mt-3">{card.question}</h1>
 
       {justAsked && (

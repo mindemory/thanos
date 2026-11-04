@@ -1,16 +1,18 @@
 "use client";
 
-import { ChevronDown, Upload } from "lucide-react";
+import { ChevronDown, FolderGit2, Upload } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 
 import { useFormAction } from "@/components/client";
 import { Marked, useSearchIndex } from "@/components/lab/LabProvider";
+import { ProjectFields, SecretNote } from "@/components/lab/ProjectForm";
 import { BUTTON, INPUT, Note, PRIMARY, QUIET } from "@/components/ui";
-import { dropDraft, keepDraft, uploadDrafts, type FormState } from "@/lib/actions";
-import type { Draft } from "@/lib/drafts";
-import { monthYear } from "@/lib/format";
+import { dropDraft, dropProjectDraft, keepDraft, keepProjectDraft, suggestFromGithub, uploadDrafts, type FormState } from "@/lib/actions";
+import type { Draft, ProjectDraft } from "@/lib/drafts";
+import type { PersonOption, ProjectValues } from "@/lib/projects";
+import { monthYear, plural } from "@/lib/format";
 import { search } from "@/lib/search";
 import { TOPICS } from "@/lib/topics";
 import { cn } from "@/lib/utils";
@@ -103,6 +105,100 @@ export function DraftCard({ slug, draft }: { slug: string; draft: Draft }) {
         </div>
       </form>
     </li>
+  );
+}
+
+/**
+ * One project draft, editable in place, with what it came from: a Slack channel, as the importer
+ * read it, or a repository. Keep makes it a project as it stands; Drop sets it aside.
+ */
+export function ProjectDraftCard({
+  slug,
+  draft,
+  values,
+  people,
+  repos,
+}: {
+  slug: string;
+  draft: ProjectDraft;
+  values: ProjectValues;
+  people: PersonOption[];
+  repos: string[];
+}) {
+  const [state, formProps, pending] = useFormAction<FormState>(keepProjectDraft, {});
+  const [dropping, startDrop] = useTransition();
+  return (
+    <li className="card p-4 md:p-5">
+      <p className="text-xs text-faint">From {draft.source || "the lab's chat"}</p>
+      <form {...formProps} className="mt-4 space-y-5">
+        <input type="hidden" name="lab" value={slug} />
+        <input type="hidden" name="id" value={draft.id} />
+        <ProjectFields values={values} people={people} repos={repos} />
+
+        {draft.evidence && (
+          <details className="group">
+            <summary className="flex cursor-pointer list-none items-center gap-1.5 text-sm text-muted hover:text-ink">
+              <ChevronDown size={14} className="transition-transform group-open:rotate-180" aria-hidden="true" />
+              What Thanos read in the channel
+            </summary>
+            <pre className="tile mt-2 max-h-72 overflow-auto whitespace-pre-wrap p-3 font-sans text-sm leading-relaxed text-muted">
+              {draft.evidence}
+            </pre>
+          </details>
+        )}
+
+        {state.error && <Note tone="bad">{state.error}</Note>}
+        {state.sensitive && <SecretNote kinds={state.sensitive} pending={pending} label="Keep anyway" />}
+
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          <button type="submit" disabled={pending || dropping} className={PRIMARY}>
+            {pending ? "Keeping…" : "Keep"}
+          </button>
+          <button
+            type="button"
+            disabled={pending || dropping}
+            onClick={() => startDrop(() => dropProjectDraft(slug, draft.id))}
+            className={QUIET}
+          >
+            {dropping ? "Dropping…" : "Drop"}
+          </button>
+          <span className="ml-auto text-xs text-faint">Not a project, or one the lab has? Drop it.</span>
+        </div>
+      </form>
+    </li>
+  );
+}
+
+/** Drafts a project for each of the lab's repositories on GitHub that no project has yet. */
+export function SuggestFromGithub({ slug }: { slug: string }) {
+  const router = useRouter();
+  const [status, setStatus] = useState<{ text: string; bad?: boolean } | null>(null);
+  const [pending, start] = useTransition();
+  const suggest = () =>
+    start(async () => {
+      const reply = await suggestFromGithub(slug);
+      if ("error" in reply) {
+        setStatus({ text: reply.error, bad: true });
+        return;
+      }
+      const parts = [];
+      if (reply.added) parts.push(`${plural(reply.added, "new draft")}`);
+      if (reply.joined) parts.push(`${plural(reply.joined, "repository", "repositories")} added to drafts from Slack`);
+      setStatus({ text: parts.length ? `${parts.join(", and ")}.` : "Every repository the lab has on GitHub already has a project or a draft." });
+      router.refresh();
+    });
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <button type="button" onClick={suggest} disabled={pending} className={BUTTON}>
+        <FolderGit2 size={15} aria-hidden="true" />
+        {pending ? "Looking…" : "Suggest projects from GitHub"}
+      </button>
+      {status && (
+        <span role="status" className={cn("text-sm", status.bad ? "text-bad-ink" : "text-muted")}>
+          {status.text}
+        </span>
+      )}
+    </div>
   );
 }
 

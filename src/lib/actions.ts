@@ -6,9 +6,19 @@ import { redirect } from "next/navigation";
 
 import { canStartLab, createLoginLink, currentPerson, endSession, LinkError, nameOf, redeemLoginLink, safeNext } from "./auth";
 import { cardInLab, insertCard, insertKeptCard, markChecked, removeCard, toggleReaction, updateCard, UUID, type CardInput } from "./cards";
-import { db, localTrusted } from "./db";
-import { addDrafts, decideDraft, dropWaiting, waitingDraft } from "./drafts";
-import { githubOwners } from "./github";
+import { db, iso, localTrusted } from "./db";
+import {
+  addDrafts,
+  decideDraft,
+  decideProjectDraft,
+  draftFromRepos,
+  dropWaiting,
+  dropWaitingProjects,
+  projectFromDraft,
+  waitingDraft,
+  waitingProjectDraft,
+} from "./drafts";
+import { githubOwners, labRepos, repoOf } from "./github";
 import {
   addMember,
   cancelInvite,
@@ -29,7 +39,10 @@ import {
 } from "./labs";
 import { mailReady, sendMail } from "./mail";
 import { onThisComputer, siteOrigin } from "./origin";
+import { lookUp, readDois, type Paper } from "./papers";
+import { insertProject, labProjects, projectInLab, removeProject, updateProject, type ProjectInput } from "./projects";
 import { findSensitive } from "./sensitive";
+import { finished, isStatus, readYear, yearOf, type Status } from "./timeline";
 import { isTopic } from "./topics";
 
 export interface FormState {
@@ -213,15 +226,40 @@ export async function saveMember(_: FormState, form: FormData): Promise<FormStat
   if (!ownAdmin && who !== person.id) return { error: "Only an admin can change someone else." };
   const title = field(form, "title").slice(0, 60);
   const q = await db();
-  const [current] = await q.query<{ role: Role }>("select role from members where lab_id = $1 and person_id = $2", [lab.id, who]);
+  const [current] = await q.query<{ role: Role; joined_at: unknown; left_at: unknown }>(
+    "select role, joined_at, left_at from members where lab_id = $1 and person_id = $2",
+    [lab.id, who],
+  );
   if (!current) return { error: "They aren't in this lab." };
   let role = current.role;
   if (ownAdmin && ["admin", "member", "alum"].includes(field(form, "role"))) role = field(form, "role") as Role;
   if (current.role === "admin" && role !== "admin" && (await adminCount(lab.id)) <= 1) {
     return { error: "A lab needs at least one admin. Make someone else an admin first." };
   }
-  await q.query("update members set role = $3, title = $4 where lab_id = $1 and person_id = $2", [lab.id, who, role, title]);
-  revalidatePath(`/${lab.slug}/people`);
+  // The years someone was in the lab, for its History. Only a year is ever typed, so a date
+  // changes only when its year does. Someone becoming an alum left today unless a year says
+  // otherwise; an alum from before Thanos kept the date isn't given one.
+  const since = readYear(field(form, "since"));
+  const until = readYear(field(form, "left"));
+  if (since === undefined || until === undefined) return { error: "Years are written like 2019, and not in the future." };
+  const joined = iso(current.joined_at);
+  const wasLeft = current.left_at ? iso(current.left_at) : null;
+  const joinedAt = since !== null && since !== yearOf(joined) ? `${since}-01-01T00:00:00Z` : joined;
+  let leftAt: string | null = null;
+  if (role === "alum") {
+    if (until !== null) leftAt = wasLeft && yearOf(wasLeft) === until ? wasLeft : `${until}-01-01T00:00:00Z`;
+    else leftAt = current.role === "alum" ? wasLeft : new Date().toISOString();
+  }
+  if (leftAt && yearOf(leftAt) < yearOf(joinedAt)) return { error: "Someone can't leave the lab before they joined it." };
+  await q.query("update members set role = $3, title = $4, joined_at = $5, left_at = $6 where lab_id = $1 and person_id = $2", [
+    lab.id,
+    who,
+    role,
+    title,
+    joinedAt,
+    leftAt,
+  ]);
+  revalidatePath(`/${lab.slug}`, "layout");
   return { saved: true };
 }
 
@@ -266,6 +304,7 @@ function cardFields(form: FormData): CardInput | FormState {
     answer: field(form, "answer").replace(/\r\n?/g, "\n"),
     topic: isTopic(field(form, "topic")) ? field(form, "topic") : "other",
     tags: cleanTags(field(form, "tags")),
+    project: UUID.test(field(form, "project")) ? field(form, "project") : null,
     note: field(form, "note").replace(/\s+/g, " ").slice(0, 200),
   };
   if (input.question.length < 8) return { error: "Write the question out in full, so the next person searching finds it." };
@@ -283,6 +322,7 @@ export async function saveCard(_: FormState, form: FormData): Promise<FormState>
   const id = field(form, "id");
   const input = cardFields(form);
   if (!("question" in input)) return input;
+  if (input.project && !(await projectInLab(lab.id, input.project))) return { error: "That project is gone. Pick another, or none." };
   let cardId = id;
   if (id) {
     if (!UUID.test(id)) return { error: "That card doesn't exist." };
@@ -346,6 +386,7 @@ export async function keepDraft(_: FormState, form: FormData): Promise<FormState
   if (!draft) return { error: "Someone already decided on this draft." };
   const input = cardFields(form);
   if (!("question" in input)) return input;
+  if (input.project && !(await projectInLab(lab.id, input.project))) return { error: "That project is gone. Pick another, or none." };
   const cardId = await insertKeptCard(lab.id, person.id, { ...input, note: "Kept from the lab's chat", source: draft.source, dated: draft.dated });
   await decideDraft(lab.id, draft.id, person.id, cardId);
   revalidatePath(`/${lab.slug}`, "layout");
@@ -364,6 +405,154 @@ export async function dropAllWaiting(slug: string): Promise<void> {
   if (!isAdmin) return;
   await dropWaiting(lab.id, person.id);
   revalidatePath(`/${lab.slug}`, "layout");
+}
+
+// ── Projects ─────────────────────────────────────────────────────────────────
+
+const MOST = { people: 40, others: 30, repos: 20, data: 10, papers: 30 };
+
+/** A Slack channel as #name, or a link to it, from what someone typed; null when it's neither. */
+function slackOf(raw: string): string | null {
+  if (!raw) return "";
+  if (/^https:\/\/[\w-]+\.slack\.com\/\S+$/i.test(raw)) return raw.slice(0, 200);
+  const name = raw.replace(/^#/, "").toLowerCase();
+  return /^[a-z0-9][a-z0-9._-]{0,79}$/.test(name) ? `#${name}` : null;
+}
+
+/**
+ * A project's fields from a form, or what's wrong with them, or the secrets in them not yet
+ * confirmed. Papers new to it are looked up at doi.org, last, once everything else is right; one
+ * doi.org doesn't answer for just now is kept by its DOI, and asked about again when it's next saved.
+ */
+async function projectFields(form: FormData, labId: string, projectId: string | null): Promise<ProjectInput | FormState> {
+  const name = field(form, "name").replace(/\s+/g, " ");
+  if (name.length < 2 || name.length > 100) return { error: "Give the project a name of up to 100 characters." };
+  const status: Status = isStatus(field(form, "status")) ? (field(form, "status") as Status) : "active";
+  const summary = field(form, "summary").replace(/\r\n?/g, "\n");
+  if (summary.length > 2000) return { error: "Keep the description to a few sentences. The details can go in cards about it." };
+  const started = readYear(field(form, "started"));
+  const ended = finished(status) ? readYear(field(form, "ended")) : null; // a project still going hasn't ended
+  if (started === undefined || ended === undefined) return { error: "Years are written like 2019, and not in the future." };
+  if (started && ended && ended < started) return { error: "A project can't end before it started." };
+  const picked = (key: string) => [...new Set(form.getAll(key).map((v) => String(v).replace(/\s+/g, " ").trim()))].filter(Boolean);
+  const people = picked("people").filter((id) => UUID.test(id));
+  const others = picked("others").map((n) => n.slice(0, 80));
+  if (people.length > MOST.people || others.length > MOST.others) return { error: "That's a lot of people for one project." };
+  const repos: string[] = [];
+  for (const raw of picked("repos")) {
+    const repo = repoOf(raw);
+    if (!repo) return { error: `${raw} isn't a GitHub repository. Give it as owner/name, or its link.` };
+    if (!repos.some((r) => r.toLowerCase() === repo.toLowerCase())) repos.push(repo);
+  }
+  if (repos.length > MOST.repos) return { error: `Give up to ${MOST.repos} repositories.` };
+  const data = [...new Set(field(form, "data").split("\n").map((l) => l.trim()).filter(Boolean))];
+  if (data.length > MOST.data || data.some((d) => d.length > 300)) return { error: `Give up to ${MOST.data} places for its data, one a line.` };
+  const slack = slackOf(field(form, "slack"));
+  if (slack === null) return { error: "Give the Slack channel as #name, or a link to it." };
+  const papersText = field(form, "papers");
+  if (papersText.length > MOST.papers * 300) return { error: `Give up to ${MOST.papers} papers, one DOI a line.` };
+  const { dois, wrong } = readDois(papersText);
+  if (wrong.length) return { error: `${wrong[0].slice(0, 80)} isn't a DOI. A DOI starts with 10., like 10.1038/s41586-020-2649-2.` };
+  if (dois.length > MOST.papers) return { error: `Give up to ${MOST.papers} papers.` };
+  if (form.get("confirm") !== "yes") {
+    const found = findSensitive([name, summary, slack, ...others, ...data].join("\n"));
+    if (found.length) return { sensitive: found };
+  }
+  // People stay on a project while they're in the lab, or when they were on it already.
+  const allowed = await (await db()).query<{ person_id: string }>(
+    "select person_id from members where lab_id = $1 union select person_id from project_people where project_id = $2::uuid",
+    [labId, projectId],
+  );
+  const had = projectId ? ((await labProjects(labId)).find((p) => p.id === projectId)?.papers ?? []) : [];
+  const papers = await Promise.all(
+    dois.map(async (doi): Promise<Paper | null> => {
+      const known = had.find((p) => p.doi === doi && p.title);
+      if (known) return known;
+      const found = await lookUp(doi);
+      return found === undefined ? { doi, title: "", detail: "", year: null } : found;
+    }),
+  );
+  const unknown = dois.find((_, i) => papers[i] === null);
+  if (unknown) return { error: `doi.org has no paper with the DOI ${unknown}. Check it, or leave it out.` };
+  return {
+    name,
+    status,
+    summary,
+    started,
+    ended,
+    people: people.filter((id) => allowed.some((a) => a.person_id === id)),
+    others,
+    repos,
+    data,
+    slack,
+    papers: papers.filter((p): p is Paper => p !== null),
+    note: field(form, "note").replace(/\s+/g, " ").slice(0, 200),
+  };
+}
+
+/** Starts a project, or saves a new version of one. Anyone in the lab can, as with cards. */
+export async function saveProject(_: FormState, form: FormData): Promise<FormState> {
+  const { lab, person } = await requireMember(field(form, "lab"));
+  const id = field(form, "id");
+  if (id && !(await projectInLab(lab.id, id))) return { error: "That project is gone; someone may have removed it." };
+  const input = await projectFields(form, lab.id, id || null);
+  if (!("name" in input)) return input;
+  const slug = id ? await updateProject(lab.id, id, person.id, input) : (await insertProject(lab.id, person.id, input)).slug;
+  if (!slug) return { error: "That project is gone; someone may have removed it." };
+  revalidatePath(`/${lab.slug}`, "layout");
+  redirect(`/${lab.slug}/p/${slug}`);
+}
+
+export async function removeProjectAction(slug: string, id: string): Promise<void> {
+  const { lab, person, isAdmin } = await requireMember(slug);
+  const project = await projectInLab(lab.id, id);
+  if (!project || (!isAdmin && project.createdBy !== person.id)) return;
+  await removeProject(id);
+  revalidatePath(`/${lab.slug}`, "layout");
+  redirect(`/${lab.slug}/projects`);
+}
+
+/** Keeps a project draft as a project, with whatever the admin changed in it. */
+export async function keepProjectDraft(_: FormState, form: FormData): Promise<FormState> {
+  const { lab, person, isAdmin } = await requireMember(field(form, "lab"));
+  if (!isAdmin) return { error: "Only the lab's admins can keep drafts." };
+  const draft = UUID.test(field(form, "id")) ? await waitingProjectDraft(lab.id, field(form, "id")) : null;
+  if (!draft) return { error: "Someone already decided on this draft." };
+  const input = await projectFields(form, lab.id, null);
+  if (!("name" in input)) return input;
+  // Claimed before the project is made, so two admins keeping it at once make one project.
+  if (!(await decideProjectDraft(lab.id, draft.id, person.id, "kept"))) return { error: "Someone already decided on this draft." };
+  const from = draft.origin.startsWith("github:") ? "the lab's GitHub" : "the lab's Slack";
+  const { id } = await insertProject(lab.id, person.id, { ...input, note: `Kept from ${from}` }, draft.source);
+  await projectFromDraft(draft.id, id);
+  revalidatePath(`/${lab.slug}`, "layout");
+  return { saved: true };
+}
+
+export async function dropProjectDraft(slug: string, id: string): Promise<void> {
+  const { lab, person, isAdmin } = await requireMember(slug);
+  if (!isAdmin || !UUID.test(id)) return;
+  await decideProjectDraft(lab.id, id, person.id, "dropped");
+  revalidatePath(`/${lab.slug}`, "layout");
+}
+
+export async function dropAllProjectDrafts(slug: string): Promise<void> {
+  const { lab, person, isAdmin } = await requireMember(slug);
+  if (!isAdmin) return;
+  await dropWaitingProjects(lab.id, person.id);
+  revalidatePath(`/${lab.slug}`, "layout");
+}
+
+/** Drafts a project for each of the lab's own repositories on GitHub that no project has yet. Admins only. */
+export async function suggestFromGithub(slug: string): Promise<{ added: number; joined: number } | { error: string }> {
+  const { lab, isAdmin } = await requireMember(slug);
+  if (!isAdmin) return { error: "Only the lab's admins can add drafts." };
+  if (!lab.github) return { error: "The lab has no GitHub organization yet. Its admins can add one in Settings." };
+  const { repos, problems } = await labRepos(lab.github);
+  if (!repos.length && problems.length) return { error: problems[0] };
+  const tally = await draftFromRepos(lab.id, repos);
+  revalidatePath(`/${lab.slug}`, "layout");
+  return tally;
 }
 
 // ── Who can get in ───────────────────────────────────────────────────────────

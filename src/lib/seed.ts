@@ -48,6 +48,7 @@ const HOW_IT_WORKS = `Thanos is this lab's memory: what people here have worked 
 - **Ask once.** If it isn't here, ask. Your question waits on the Open list until someone who knows answers it.
 - **Answer what you know.** Anyone in the lab can answer or improve any card. Every version is kept, with who wrote it, so an edit never loses anything.
 - **Say when it's still right.** Chart strings change, grants end, scanners move. *Still right* puts today's date on an answer; one nobody has checked in a year is marked as possibly out of date.
+- **Keep projects together.** Each project has a page: who is on it, its code, where its data lives, its Slack channel, its papers and the cards about it. **History** shows the lab year by year.
 - **Keep secrets out.** Everyone in the lab can read Thanos, including people who join years from now. Say who holds the card or the password and how to ask them, not the number itself.`;
 
 function codeAnswer(lab: NewLab): string {

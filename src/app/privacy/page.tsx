@@ -3,13 +3,14 @@ import { Frame } from "@/components/Frame";
 export const metadata = { title: "Your lab's data" };
 
 // What this page says has to stay true of the code: who can open a lab (labs.ts, requireMember and
-// helpingIn), what's emailed (actions.ts), where search and the Slack importer run, and what an
-// export and deleting a lab do. Change one, change the other.
+// helpingIn), what's emailed (actions.ts), where search and the Slack importer run, what Thanos asks
+// other sites (github.ts and papers.ts), and what an export and deleting a lab do. Change one,
+// change the other.
 
 const POINTS: { title: string; text: string }[] = [
   {
     title: "It's your lab's",
-    text: "Everything a lab puts in Thanos belongs to the lab: its questions, its answers and every version of them, its drafts, and who's in it. Only people signed in as its members see it. Alumni keep reading until an admin removes them.",
+    text: "Everything a lab puts in Thanos belongs to the lab: its questions, its answers, its projects and every version of them, its drafts, and who's in it. Only people signed in as its members see it. Alumni keep reading until an admin removes them.",
   },
   {
     title: "Whoever runs Thanos can't open your lab",
@@ -17,7 +18,7 @@ const POINTS: { title: string; text: string }[] = [
   },
   {
     title: "Nothing reads your lab for anyone else",
-    text: "Search runs in your own browser. No AI service reads your lab on Thanos's servers, and there are no ads, trackers or analytics. Turning a lab's Slack into drafts happens on a lab member's own computer, with a model running there, and only the drafts an admin keeps reach Thanos. The host keeps ordinary server logs for a short while: which pages were asked for, not what was on them.",
+    text: "Search runs in your own browser. No AI service reads your lab on Thanos's servers, and there are no ads, trackers or analytics. Thanos asks GitHub for the lab's public repositories, by the name of its organization, and asks doi.org about a paper's DOI to show its title; only that name or that DOI goes with each. Turning a lab's Slack into draft cards and projects happens on a lab member's own computer, with a model running there. The drafts reach Thanos when an admin adds them, and wait for the lab's admins to keep or drop; what each was made from is cleared once they decide. The host keeps ordinary server logs for a short while: which pages were asked for, not what was on them.",
   },
   {
     title: "Email, and nothing else",
