@@ -2,10 +2,11 @@ import { Download, Inbox } from "lucide-react";
 import Link from "next/link";
 
 import { ConfirmSubmit, CopyButton } from "@/components/client";
-import { LabForm, NameForm } from "@/components/forms";
+import { DeleteLabForm, LabForm, NameForm } from "@/components/forms";
 import { BUTTON, Note, QUIET } from "@/components/ui";
-import { rotateInvite, signOut } from "@/lib/actions";
-import { inviteCode, labMembers, requireMember } from "@/lib/labs";
+import { letOperatorsIn, rotateInvite, shutOperatorsOut, signOut } from "@/lib/actions";
+import { dayMonth } from "@/lib/format";
+import { inviteCode, labMembers, requireMember, supportOpen } from "@/lib/labs";
 import { siteOrigin } from "@/lib/origin";
 
 export const metadata = { title: "Settings" };
@@ -21,11 +22,14 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default async function SettingsPage({ params }: { params: Promise<{ lab: string }> }) {
   const { lab: slug } = await params;
-  const { lab, person, isAdmin } = await requireMember(slug);
+  // The invite link, the lab's details, letting operators in and deleting the lab are for its own
+  // admins, not for someone running Thanos whom they've let in to help.
+  const { lab, person, isAdmin, ownAdmin } = await requireMember(slug);
+  const helping = supportOpen(lab);
   const [code, origin, members] = await Promise.all([
-    isAdmin ? inviteCode(lab.id) : Promise.resolve(null),
+    ownAdmin ? inviteCode(lab.id) : Promise.resolve(null),
     siteOrigin(),
-    isAdmin ? Promise.resolve([]) : labMembers(lab.id),
+    ownAdmin ? Promise.resolve([]) : labMembers(lab.id),
   ]);
   const invite = code && origin ? `${origin}/join/${code}` : null;
   const admins = members.filter((m) => m.role === "admin").map((m) => m.name);
@@ -38,7 +42,7 @@ export default async function SettingsPage({ params }: { params: Promise<{ lab: 
       </div>
 
       <Section title="Invite people">
-        {isAdmin ? (
+        {ownAdmin ? (
           invite ? (
             <>
               <p className="leading-relaxed text-muted">
@@ -79,10 +83,10 @@ export default async function SettingsPage({ params }: { params: Promise<{ lab: 
       )}
 
       <Section title="About the lab">
-        {!isAdmin && <p className="mb-4 text-sm text-muted">Only the lab&apos;s admins can change these.</p>}
+        {!ownAdmin && <p className="mb-4 text-sm text-muted">Only the lab&apos;s own admins can change these.</p>}
         <LabForm
           lab={{ slug, name: lab.name, institution: lab.institution, website: lab.website, github: lab.github, domains: lab.domains }}
-          readOnly={!isAdmin}
+          readOnly={!ownAdmin}
         />
       </Section>
 
@@ -90,7 +94,11 @@ export default async function SettingsPage({ params }: { params: Promise<{ lab: 
         <p className="leading-relaxed text-muted">
           Thanos should outlast any one account, this one included. Download everything {lab.name} knows: Markdown to read anywhere,
           or JSON, with every version, to move it somewhere else. A copy in the lab&apos;s GitHub now and then means none of it
-          depends on one person.
+          depends on one person.{" "}
+          <Link href="/privacy" className="text-accent underline underline-offset-2">
+            How Thanos handles the lab&apos;s data
+          </Link>
+          .
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <a href={`/${slug}/export?format=md`} className={BUTTON}>
@@ -102,6 +110,37 @@ export default async function SettingsPage({ params }: { params: Promise<{ lab: 
         </div>
       </Section>
 
+      {ownAdmin && (
+        <Section title="Help from whoever runs Thanos">
+          {helping ? (
+            <>
+              <p className="leading-relaxed text-muted">
+                The people who run this Thanos can open {lab.name} until {dayMonth(lab.supportUntil!)}, to help with something. Everyone
+                in the lab sees a note saying so.
+              </p>
+              <form action={shutOperatorsOut.bind(null, slug)} className="mt-4">
+                <button type="submit" className={BUTTON}>
+                  Shut them out now
+                </button>
+              </form>
+            </>
+          ) : (
+            <>
+              <p className="leading-relaxed text-muted">
+                The people who run this Thanos can&apos;t open {lab.name}: not its cards, its people or its drafts. If you need their help
+                with something in it, let them in for a week. Everyone in the lab sees a note while they can, and you can shut them
+                out again any time.
+              </p>
+              <form action={letOperatorsIn.bind(null, slug)} className="mt-4">
+                <button type="submit" className={BUTTON}>
+                  Let them in for a week
+                </button>
+              </form>
+            </>
+          )}
+        </Section>
+      )}
+
       <Section title="You">
         <p className="mb-4 text-sm text-muted">Signed in as {person.email}.</p>
         <NameForm name={person.name ?? ""} />
@@ -111,6 +150,18 @@ export default async function SettingsPage({ params }: { params: Promise<{ lab: 
           </button>
         </form>
       </Section>
+
+      {ownAdmin && (
+        <Section title="Delete the lab">
+          <p className="leading-relaxed text-muted">
+            This deletes {lab.name} and everything in it, for everyone: its cards and every version of them, its drafts, and who&apos;s
+            in it. It can&apos;t be undone, so download a copy first.
+          </p>
+          <div className="mt-4">
+            <DeleteLabForm slug={slug} />
+          </div>
+        </Section>
+      )}
     </div>
   );
 }

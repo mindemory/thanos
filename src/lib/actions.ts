@@ -1,21 +1,28 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { canStartLab, createLoginLink, currentPerson, endSession, LinkError, nameOf, redeemLoginLink, safeNext } from "./auth";
 import { cardInLab, insertCard, insertKeptCard, markChecked, removeCard, toggleReaction, updateCard, UUID, type CardInput } from "./cards";
-import { db, isLocal } from "./db";
+import { db, localTrusted } from "./db";
 import { addDrafts, decideDraft, dropWaiting, waitingDraft } from "./drafts";
 import { githubOwners } from "./github";
 import {
   addMember,
+  cancelInvite,
   createLab,
+  deleteLab,
   domainAllowed,
+  inviteByEmail,
+  invitesToday,
   labByInvite,
   labBySlug,
   newInviteCode,
   requireMember,
+  roleIn,
+  setSupport,
   slugProblem,
   type Lab,
   type Role,
@@ -38,17 +45,22 @@ export interface LinkState {
 }
 
 const field = (form: FormData, name: string) => String(form.get(name) ?? "").trim();
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const SUPPORT_DAYS = 7;
+const INVITES_PER_DAY = 100;
 
 // ── Signing in ───────────────────────────────────────────────────────────────
 
 export async function requestLink(_: LinkState, form: FormData): Promise<LinkState> {
   const email = field(form, "email").toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) return { error: "That doesn't look like an email address." };
+  if (!EMAIL.test(email) || email.length > 254) return { error: "That doesn't look like an email address." };
   const origin = await siteOrigin();
   if (!origin) return { error: "This Thanos doesn't know its own address yet. Its operator needs to set THANOS_URL." };
   let link: string;
   try {
-    link = await createLoginLink(email, safeNext(form.get("next")), origin);
+    const h = await headers();
+    const from = h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || "";
+    link = await createLoginLink(email, safeNext(form.get("next")), origin, from);
   } catch (e) {
     if (e instanceof LinkError) return { error: e.message };
     throw e;
@@ -96,7 +108,7 @@ export async function joinLab(form: FormData): Promise<void> {
   if (!person) redirect("/login");
   const code = field(form, "code");
   // A local copy lets its owner join any of its labs; anywhere else it takes an invite.
-  const lab = code ? await labByInvite(code) : isLocal ? await labBySlug(field(form, "slug")) : null;
+  const lab = code ? await labByInvite(code) : localTrusted ? await labBySlug(field(form, "slug")) : null;
   if (!lab) redirect("/");
   if (!domainAllowed(lab, person.email)) redirect(`/join/${encodeURIComponent(code)}`);
   await addMember(lab.id, person.id);
@@ -114,7 +126,7 @@ function website(raw: string): string | null {
   }
 }
 
-function labFields(form: FormData): { error: string } | Omit<Lab, "id" | "slug" | "createdAt"> {
+function labFields(form: FormData): { error: string } | Omit<Lab, "id" | "slug" | "createdAt" | "supportUntil"> {
   const name = field(form, "name").replace(/\s+/g, " ");
   if (!name || name.length > 80) return { error: "Give the lab a name of up to 80 characters." };
   const site = website(field(form, "website"));
@@ -148,14 +160,27 @@ export async function startLab(_: FormState, form: FormData): Promise<FormState>
   const problem = slugProblem(slug);
   if (problem) return { error: `The lab's address: ${problem}` };
   if (await labBySlug(slug)) return { error: `There's already a lab at /${slug}. Pick another address.` };
-  await createLab(await db(), { slug, ...fields }, person.id);
+  // Starting a lab for someone else (its PI, say) makes them its admin and keeps whoever started it out.
+  const firstAdmin = field(form, "admin").toLowerCase();
+  if (firstAdmin && !EMAIL.test(firstAdmin)) return { error: "The first admin's address doesn't look like an email address." };
+  const forSomeoneElse = firstAdmin !== "" && firstAdmin !== person.email;
+  await createLab(await db(), { slug, ...fields }, person.id, forSomeoneElse ? firstAdmin : "");
   revalidatePath("/", "layout");
-  redirect(`/${slug}`);
+  if (!forSomeoneElse) redirect(`/${slug}`);
+  const origin = await siteOrigin();
+  if (mailReady() && origin) {
+    await sendMail(
+      firstAdmin,
+      `${fields.name} is ready on Thanos`,
+      `${nameOf(person)} started ${fields.name} on Thanos, where a lab keeps what it knows, and made you its admin.\n\nSign in with this address to open it:\n${origin}/login?next=/${slug}\n`,
+    );
+  }
+  redirect(`/?started=${encodeURIComponent(slug)}`);
 }
 
 export async function saveLab(_: FormState, form: FormData): Promise<FormState> {
-  const { lab, isAdmin } = await requireMember(field(form, "lab"));
-  if (!isAdmin) return { error: "Only the lab's admins can change this." };
+  const { lab, ownAdmin } = await requireMember(field(form, "lab"));
+  if (!ownAdmin) return { error: "Only the lab's own admins can change this." };
   const fields = labFields(form);
   if ("error" in fields) return fields;
   await (await db()).query(
@@ -167,8 +192,8 @@ export async function saveLab(_: FormState, form: FormData): Promise<FormState> 
 }
 
 export async function rotateInvite(slug: string): Promise<void> {
-  const { lab, isAdmin } = await requireMember(slug);
-  if (!isAdmin) return;
+  const { lab, ownAdmin } = await requireMember(slug);
+  if (!ownAdmin) return;
   await newInviteCode(lab.id);
   revalidatePath(`/${lab.slug}/settings`);
 }
@@ -182,16 +207,16 @@ async function adminCount(labId: string): Promise<number> {
 }
 
 export async function saveMember(_: FormState, form: FormData): Promise<FormState> {
-  const { lab, person, isAdmin } = await requireMember(field(form, "lab"));
+  const { lab, person, ownAdmin } = await requireMember(field(form, "lab"));
   const who = field(form, "person");
   if (!UUID.test(who)) return { error: "No such person." };
-  if (!isAdmin && who !== person.id) return { error: "Only an admin can change someone else." };
+  if (!ownAdmin && who !== person.id) return { error: "Only an admin can change someone else." };
   const title = field(form, "title").slice(0, 60);
   const q = await db();
   const [current] = await q.query<{ role: Role }>("select role from members where lab_id = $1 and person_id = $2", [lab.id, who]);
   if (!current) return { error: "They aren't in this lab." };
   let role = current.role;
-  if (isAdmin && ["admin", "member", "alum"].includes(field(form, "role"))) role = field(form, "role") as Role;
+  if (ownAdmin && ["admin", "member", "alum"].includes(field(form, "role"))) role = field(form, "role") as Role;
   if (current.role === "admin" && role !== "admin" && (await adminCount(lab.id)) <= 1) {
     return { error: "A lab needs at least one admin. Make someone else an admin first." };
   }
@@ -201,8 +226,8 @@ export async function saveMember(_: FormState, form: FormData): Promise<FormStat
 }
 
 export async function removeMember(slug: string, who: string): Promise<void> {
-  const { lab, isAdmin } = await requireMember(slug);
-  if (!isAdmin || !UUID.test(who)) return;
+  const { lab, ownAdmin } = await requireMember(slug);
+  if (!ownAdmin || !UUID.test(who)) return;
   const q = await db();
   const [current] = await q.query<{ role: Role }>("select role from members where lab_id = $1 and person_id = $2", [lab.id, who]);
   if (!current || (current.role === "admin" && (await adminCount(lab.id)) <= 1)) return;
@@ -224,6 +249,7 @@ function cleanTags(raw: string): string {
 async function tellAsker(askedBy: string, lab: Lab, cardId: string, question: string, answerer: string) {
   const origin = await siteOrigin();
   if (!mailReady() || !origin) return;
+  if (!(await roleIn(lab.id, askedBy))) return; // they've left, or been removed
   const [asker] = await (await db()).query<{ email: string }>("select email from people where id = $1", [askedBy]);
   if (!asker) return;
   await sendMail(
@@ -338,4 +364,66 @@ export async function dropAllWaiting(slug: string): Promise<void> {
   if (!isAdmin) return;
   await dropWaiting(lab.id, person.id);
   revalidatePath(`/${lab.slug}`, "layout");
+}
+
+// ── Who can get in ───────────────────────────────────────────────────────────
+
+/** Lets the people who run this Thanos into the lab for a week, to help with something. */
+export async function letOperatorsIn(slug: string): Promise<void> {
+  const ctx = await requireMember(slug);
+  if (!ctx.ownAdmin) return;
+  await setSupport(ctx.lab.id, SUPPORT_DAYS);
+  revalidatePath(`/${ctx.lab.slug}`, "layout");
+}
+
+export async function shutOperatorsOut(slug: string): Promise<void> {
+  const ctx = await requireMember(slug);
+  if (!ctx.ownAdmin) return;
+  await setSupport(ctx.lab.id, 0);
+  revalidatePath(`/${ctx.lab.slug}`, "layout");
+}
+
+/** Invites people by email: each is in the lab, in the role given, the next time they sign in. */
+export async function inviteToLab(_: FormState, form: FormData): Promise<FormState> {
+  const { lab, person, ownAdmin } = await requireMember(field(form, "lab"));
+  if (!ownAdmin) return { error: "Only the lab's own admins can invite people." };
+  const emails = [...new Set(field(form, "emails").toLowerCase().split(/[\s,;]+/).filter(Boolean))];
+  if (!emails.length || emails.length > 50) return { error: "Give an email address, or up to 50 separated by commas." };
+  const wrong = emails.find((e) => !EMAIL.test(e) || e.length > 254);
+  if (wrong) return { error: `${wrong} doesn't look like an email address.` };
+  if ((await invitesToday(lab.id)) + emails.length > INVITES_PER_DAY) {
+    return { error: `A lab can invite up to ${INVITES_PER_DAY} people a day by email. Share the invite link for more.` };
+  }
+  const role = field(form, "role") === "admin" ? "admin" : "member";
+  const named: string[] = [];
+  for (const email of emails) if (await inviteByEmail(lab.id, email, role)) named.push(email);
+  const origin = await siteOrigin();
+  if (mailReady() && origin) {
+    for (const email of named) {
+      await sendMail(
+        email,
+        `You're invited to ${lab.name} on Thanos`,
+        `${nameOf(person)} invited you to ${lab.name} on Thanos, where the lab keeps what it knows.\n\nSign in with this address to join:\n${origin}/login?next=/${lab.slug}\n`,
+      );
+    }
+  }
+  revalidatePath(`/${lab.slug}/people`);
+  return { saved: true };
+}
+
+export async function cancelInviteAction(slug: string, email: string): Promise<void> {
+  const { lab, ownAdmin } = await requireMember(slug);
+  if (!ownAdmin) return;
+  await cancelInvite(lab.id, email);
+  revalidatePath(`/${lab.slug}/people`);
+}
+
+/** Deletes the lab and everything in it. Only its own admins, and only when they type its address. */
+export async function deleteLabAction(_: FormState, form: FormData): Promise<FormState> {
+  const ctx = await requireMember(field(form, "lab"));
+  if (!ctx.ownAdmin) return { error: "Only the lab's own admins can delete it." };
+  if (field(form, "confirm") !== ctx.lab.slug) return { error: `Type ${ctx.lab.slug} to say you mean it.` };
+  await deleteLab(ctx.lab.id);
+  revalidatePath("/", "layout");
+  redirect("/?deleted=1");
 }

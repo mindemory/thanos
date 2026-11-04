@@ -3,8 +3,18 @@
 import { Mail } from "lucide-react";
 
 import { useFormAction } from "@/components/client";
-import { Field, INPUT, Note, PRIMARY } from "@/components/ui";
-import { requestLink, saveLab, saveMember, saveName, startLab, type FormState, type LinkState } from "@/lib/actions";
+import { BUTTON, Field, INPUT, Note, PRIMARY } from "@/components/ui";
+import {
+  deleteLabAction,
+  inviteToLab,
+  requestLink,
+  saveLab,
+  saveMember,
+  saveName,
+  startLab,
+  type FormState,
+  type LinkState,
+} from "@/lib/actions";
 import { cn } from "@/lib/utils";
 
 // The smaller forms: signing in, a name, a lab's details, a member's role. Each keeps what was
@@ -92,6 +102,14 @@ export function LabForm({ lab, readOnly = false }: { lab?: LabValues; readOnly?:
             <input name="slug" maxLength={40} placeholder="murray" className={cn(INPUT, "num")} />
           </Field>
         )}
+        {!lab && (
+          <Field
+            label="Its first admin"
+            hint="Starting it for someone else, like its PI? Give their email: they become its admin when they sign in, and you stay out of the lab. Left empty, you're its admin."
+          >
+            <input name="admin" type="email" maxLength={254} autoComplete="off" placeholder="pi@university.edu" className={INPUT} />
+          </Field>
+        )}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Website">
             <input name="website" defaultValue={lab?.website} maxLength={200} placeholder="https://…" className={INPUT} />
@@ -165,3 +183,52 @@ export function MemberForm({
     </form>
   );
 }
+
+/** Invites people by email, as members or admins: they're in the next time they sign in. */
+export function InviteForm({ slug }: { slug: string }) {
+  const [state, formProps, pending] = useFormAction<FormState>(inviteToLab, {});
+  return (
+    <form {...formProps} className="space-y-3">
+      <input type="hidden" name="lab" value={slug} />
+      <Field label="Invite by email" hint="One address or several, separated by commas. They're in the lab the next time they sign in with it.">
+        <input name="emails" required maxLength={4000} autoComplete="off" placeholder="new.student@university.edu" className={INPUT} />
+      </Field>
+      <div className="flex flex-wrap items-center gap-2">
+        <label>
+          <span className="sr-only">As</span>
+          <select name="role" defaultValue="member" className={cn(INPUT, "w-auto py-2 text-sm")}>
+            <option value="member">As members</option>
+            <option value="admin">As admins</option>
+          </select>
+        </label>
+        <button type="submit" disabled={pending} className={BUTTON}>
+          {pending ? "Inviting…" : "Invite"}
+        </button>
+      </div>
+      {state.error && <Note tone="bad">{state.error}</Note>}
+      {state.saved && !pending && <Note tone="ok">Invited.</Note>}
+    </form>
+  );
+}
+
+/** Deletes the lab, once its admin has typed its address. */
+export function DeleteLabForm({ slug }: { slug: string }) {
+  const [state, formProps, pending] = useFormAction<FormState>(deleteLabAction, {});
+  return (
+    <form {...formProps} className="space-y-3">
+      <input type="hidden" name="lab" value={slug} />
+      <Field label={`Type ${slug} to delete the lab`}>
+        <input name="confirm" required autoComplete="off" spellCheck={false} className={cn(INPUT, "num")} />
+      </Field>
+      {state.error && <Note tone="bad">{state.error}</Note>}
+      <button
+        type="submit"
+        disabled={pending}
+        className="inline-flex items-center justify-center gap-2 rounded-xl border border-bad-line bg-bad-bg px-3.5 py-2 text-sm text-bad-ink transition-colors hover:opacity-90 disabled:opacity-50"
+      >
+        {pending ? "Deleting…" : "Delete the lab and everything in it"}
+      </button>
+    </form>
+  );
+}
+

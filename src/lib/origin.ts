@@ -1,6 +1,6 @@
 import { headers } from "next/headers";
 
-import { isLocal } from "./db";
+import { isLocal, localTrusted } from "./db";
 
 /**
  * The address links in emails and invites point to. A hosted Thanos takes it from THANOS_URL,
@@ -17,7 +17,7 @@ export async function siteOrigin(): Promise<string | null> {
 
 /** A local copy opened from this computer, where a sign-in link can be shown on the page itself. */
 export async function onThisComputer(): Promise<boolean> {
-  if (!isLocal) return false;
+  if (!localTrusted) return false;
   const host = ((await headers()).get("host") ?? "").replace(/:\d+$/, "");
   return host === "localhost" || host === "127.0.0.1" || host === "[::1]";
 }

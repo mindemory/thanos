@@ -1,6 +1,12 @@
 const DAY = 86_400_000;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+/** "Nov 10": a day close enough that the year goes without saying. */
+export function dayMonth(isoDate: string): string {
+  const d = new Date(isoDate);
+  return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
+}
+
 export function monthYear(isoDate: string): string {
   const d = new Date(isoDate);
   return `${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;

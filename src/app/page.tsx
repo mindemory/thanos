@@ -5,8 +5,8 @@ import { redirect } from "next/navigation";
 import { Frame, one } from "@/components/Frame";
 import { Note, PRIMARY, QUIET } from "@/components/ui";
 import { joinLab, signOut } from "@/lib/actions";
-import { canStartLab, currentPerson, nameOf } from "@/lib/auth";
-import { isLocal } from "@/lib/db";
+import { acceptInvites, canStartLab, currentPerson, nameOf } from "@/lib/auth";
+import { localTrusted } from "@/lib/db";
 import { myLabs, otherLabs } from "@/lib/labs";
 
 export const dynamic = "force-dynamic";
@@ -63,14 +63,28 @@ export default async function Home({ searchParams }: { searchParams: Promise<Rec
   const person = await currentPerson();
   if (!person) return <Landing />;
   if (!person.name) redirect("/welcome?next=/");
-  const notIn = one((await searchParams).notin);
-  const [labs, others] = await Promise.all([myLabs(person.id), isLocal ? otherLabs(person.id) : Promise.resolve([])]);
+  const query = await searchParams;
+  const notIn = one(query.notin);
+  const started = one(query.started);
+  // Someone already signed in when a lab named them by email is in it from their next visit here.
+  await acceptInvites(person.id, person.email);
+  const [labs, others] = await Promise.all([myLabs(person.id), localTrusted ? otherLabs(person.id) : Promise.resolve([])]);
 
   return (
     <Frame wide>
       {notIn && (
         <Note tone="warn" className="mb-8">
           You aren&apos;t in that lab yet. Ask someone there for its invite link.
+        </Note>
+      )}
+      {started && (
+        <Note tone="ok" className="mb-8">
+          Started /{started}. Its first admin is in it from the moment they sign in, and you aren&apos;t in it.
+        </Note>
+      )}
+      {one(query.deleted) && (
+        <Note tone="ok" className="mb-8">
+          The lab is deleted, with everything in it.
         </Note>
       )}
       <h1 className="title-1">Hello, {nameOf(person)}</h1>

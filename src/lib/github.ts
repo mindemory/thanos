@@ -1,6 +1,6 @@
 // A lab's code, from its GitHub organizations: what people built, which toolboxes they forked, and
-// what's still maintained. Asked of GitHub at most once an hour. Without GITHUB_TOKEN only public
-// repositories show; with one, the private ones it can see show too (to lab members only).
+// what's still maintained. Asked of GitHub at most once an hour. Public repositories only: a token,
+// if this Thanos has one, just lifts GitHub's limit on how often it can ask.
 
 export interface Repo {
   owner: string;
@@ -33,7 +33,8 @@ export function githubOwners(text: string): string[] {
   return text
     .split(",")
     .map((s) => s.trim().replace(/^https?:\/\/(www\.)?github\.com\//i, "").replace(/\/.*$/, ""))
-    .filter((s) => /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/.test(s));
+    .filter((s) => /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/.test(s))
+    .slice(0, 3); // a few, so one lab can't spend the hourly allowance every lab shares
 }
 
 async function ask(path: string): Promise<Response> {
@@ -51,8 +52,9 @@ export async function labRepos(github: string): Promise<{ repos: Repo[]; problem
   const lists = await Promise.all(
     owners.map(async (owner) => {
       try {
-        let reply = process.env.GITHUB_TOKEN ? await ask(`/orgs/${owner}/repos?type=all&per_page=100&sort=pushed`) : null;
-        if (!reply || reply.status === 404) reply = await ask(`/users/${owner}/repos?per_page=100&sort=pushed`);
+        // Public repositories only, token or not: a lab names any owner it likes, and must never see
+        // another lab's private code through the token this Thanos happens to hold.
+        const reply = await ask(`/users/${owner}/repos?per_page=100&sort=pushed`);
         if (!reply.ok) {
           problems.push(
             reply.status === 403 || reply.status === 429

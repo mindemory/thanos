@@ -5,7 +5,7 @@
 // which RLS doesn't bind, while a host that also serves tables over an API (Supabase does) shows
 // these to nobody else.
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 4;
 
 export const SCHEMA = `
 create table if not exists people (
@@ -117,6 +117,23 @@ create table if not exists drafts (
 );
 create index if not exists drafts_waiting on drafts (lab_id, status, dated);
 
+-- Version 3: the people who run a hosted Thanos see no lab unless its admins let them in, until
+-- support_until. And a lab can name people by email (its first admin, say), who are in it when
+-- they first sign in, so whoever starts a lab for someone else needn't join it.
+alter table labs add column if not exists support_until timestamptz;
+
+create table if not exists invites (
+  lab_id uuid not null references labs(id) on delete cascade,
+  email text not null,
+  role text not null default 'member' check (role in ('admin', 'member')),
+  created_at timestamptz not null default now(),
+  primary key (lab_id, email)
+);
+
+-- Version 4: which network address asked for a sign-in link (hashed), for a limit per place.
+alter table login_links add column if not exists ip_hash text not null default '';
+create index if not exists login_links_by_place on login_links (ip_hash, created_at desc);
+
 alter table people enable row level security;
 alter table labs enable row level security;
 alter table members enable row level security;
@@ -126,4 +143,5 @@ alter table reactions enable row level security;
 alter table login_links enable row level security;
 alter table sessions enable row level security;
 alter table drafts enable row level security;
+alter table invites enable row level security;
 `;

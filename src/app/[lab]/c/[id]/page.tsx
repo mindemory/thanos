@@ -46,6 +46,9 @@ function verb(version: Revision, before: Revision | undefined): string {
   return "Edited";
 }
 
+// The newest versions; every one of them is in the lab's JSON download.
+const HISTORY_SHOWN = 20;
+
 function History({ revisions }: { revisions: Revision[] }) {
   if (revisions.length < 2) return null;
   return (
@@ -55,7 +58,7 @@ function History({ revisions }: { revisions: Revision[] }) {
         History · {revisions.length} versions
       </summary>
       <ol className="mt-4 space-y-2 border-l border-line pl-4">
-        {revisions.map((v, i) => (
+        {revisions.slice(0, HISTORY_SHOWN).map((v, i) => (
           <li key={v.id}>
             <details className="group/v">
               <summary className="cursor-pointer list-none text-sm">
@@ -80,6 +83,11 @@ function History({ revisions }: { revisions: Revision[] }) {
           </li>
         ))}
       </ol>
+      {revisions.length > HISTORY_SHOWN && (
+        <p className="mt-3 pl-4 text-sm text-faint">
+          And {revisions.length - HISTORY_SHOWN} earlier versions, all in the lab&apos;s JSON download (Settings, then Keep a copy).
+        </p>
+      )}
     </details>
   );
 }

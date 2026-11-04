@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { cache } from "react";
 
 import { currentPerson, isOperator, type Person } from "./auth";
-import { db, iso, type Db, type Row } from "./db";
+import { db, iso, isoOrNull, type Db, type Row } from "./db";
 import { addStarters, LOCAL_LABS, type NewLab } from "./seed";
 
 // A lab is any group that keeps knowledge together: a research lab, a core facility, a team.
@@ -21,9 +21,10 @@ export interface Lab {
   github: string;
   domains: string;
   createdAt: string;
+  supportUntil: string | null; // while the lab's admins let the people who run Thanos in
 }
 
-const COLUMNS = "l.id, l.slug, l.name, l.institution, l.website, l.github, l.domains, l.created_at";
+const COLUMNS = "l.id, l.slug, l.name, l.institution, l.website, l.github, l.domains, l.created_at, l.support_until";
 
 function toLab(r: Row): Lab {
   return {
@@ -35,6 +36,7 @@ function toLab(r: Row): Lab {
     github: String(r.github),
     domains: String(r.domains),
     createdAt: iso(r.created_at),
+    supportUntil: isoOrNull(r.support_until),
   };
 }
 
@@ -110,11 +112,65 @@ export async function addMember(labId: string, personId: string): Promise<void> 
   );
 }
 
+/**
+ * Whether someone who runs this Thanos may open a lab right now: only while its admins have let
+ * them in, which every member can see. Otherwise its cards, people and drafts are closed to them.
+ */
+export function helpingIn(person: Person, lab: Lab): boolean {
+  return isOperator(person) && supportOpen(lab);
+}
+
+/** Whether a lab's admins have the people who run Thanos let in just now. */
+export function supportOpen(lab: Lab): boolean {
+  return lab.supportUntil !== null && Date.parse(lab.supportUntil) > Date.now();
+}
+
+/** Lets the people who run Thanos into a lab for a week, or (days = 0) shuts them out again. */
+export async function setSupport(labId: string, days: number): Promise<void> {
+  await (await db()).query(
+    "update labs set support_until = case when $2::int > 0 then now() + make_interval(days => $2::int) end where id = $1",
+    [labId, days],
+  );
+}
+
+/** Deletes a lab and everything in it: cards and their versions, drafts, members, invites. */
+export async function deleteLab(labId: string): Promise<void> {
+  await (await db()).query("delete from labs where id = $1", [labId]);
+}
+
+/** Names someone by email; true when they weren't named already, so only they get an email. */
+export async function inviteByEmail(labId: string, email: string, role: "admin" | "member"): Promise<boolean> {
+  const [r] = await (await db()).query<{ added: boolean }>(
+    `insert into invites (lab_id, email, role) values ($1, $2, $3)
+     on conflict (lab_id, email) do update set role = excluded.role returning (xmax = 0) as added`,
+    [labId, email.toLowerCase(), role],
+  );
+  return Boolean(r?.added);
+}
+
+export async function invitesToday(labId: string): Promise<number> {
+  const [{ n }] = await (await db()).query<{ n: number }>(
+    "select count(*)::int as n from invites where lab_id = $1 and created_at > now() - interval '1 day'",
+    [labId],
+  );
+  return n;
+}
+
+export async function pendingInvites(labId: string): Promise<{ email: string; role: string; createdAt: string }[]> {
+  const rows = await (await db()).query("select email, role, created_at from invites where lab_id = $1 order by created_at", [labId]);
+  return rows.map((r) => ({ email: String(r.email), role: String(r.role), createdAt: iso(r.created_at) }));
+}
+
+export async function cancelInvite(labId: string, email: string): Promise<void> {
+  await (await db()).query("delete from invites where lab_id = $1 and email = $2", [labId, email.toLowerCase()]);
+}
+
 export interface LabContext {
   person: Person;
   lab: Lab;
   role: Role | null;
-  isAdmin: boolean;
+  isAdmin: boolean; // the lab's admins, and someone running Thanos while they're let in to help
+  ownAdmin: boolean; // the lab's own admins only: people, the invite link, letting operators in, deleting
 }
 
 /**
@@ -127,10 +183,10 @@ export const requireMember = cache(async (slug: string): Promise<LabContext> => 
   const lab = await labBySlug(slug);
   if (!lab) notFound();
   const role = await roleIn(lab.id, person.id);
-  const operator = isOperator(person);
-  if (!role && !operator) redirect(`/?notin=${encodeURIComponent(slug)}`);
+  const helping = helpingIn(person, lab);
+  if (!role && !helping) redirect(`/?notin=${encodeURIComponent(slug)}`);
   if (!person.name) redirect(`/welcome?next=/${encodeURIComponent(slug)}`);
-  return { person, lab, role, isAdmin: role === "admin" || operator };
+  return { person, lab, role, isAdmin: role === "admin" || helping, ownAdmin: role === "admin" };
 });
 
 // Paths Thanos uses itself, which a lab's address can't take.
@@ -144,14 +200,20 @@ export function slugProblem(slug: string): string | null {
   return null;
 }
 
-export async function createLab(q: Db, lab: NewLab, creatorId: string | null): Promise<void> {
+/**
+ * Starts a lab. Its first admin is whoever started it, or, when they name someone else by email,
+ * that person, from the moment they first sign in; then whoever started it never joins it.
+ */
+export async function createLab(q: Db, lab: NewLab, creatorId: string | null, firstAdmin = ""): Promise<string> {
   const [row] = await q.query<{ id: string }>(
     `insert into labs (slug, name, institution, website, github, invite_code)
      values ($1, $2, $3, $4, $5, $6) returning id`,
     [lab.slug, lab.name, lab.institution, lab.website, lab.github, randomBytes(9).toString("base64url")],
   );
-  if (creatorId) await q.query("insert into members (lab_id, person_id, role) values ($1, $2, 'admin')", [row.id, creatorId]);
+  if (firstAdmin) await q.query("insert into invites (lab_id, email, role) values ($1, $2, 'admin')", [row.id, firstAdmin.toLowerCase()]);
+  else if (creatorId) await q.query("insert into members (lab_id, person_id, role) values ($1, $2, 'admin')", [row.id, creatorId]);
   await addStarters(q, row.id, lab);
+  return row.id;
 }
 
 /** The first start of a local copy: the labs it was made for, with their starter cards. */

@@ -25,3 +25,10 @@ test("finds passwords, keys and other secrets, but not talk about them", () => {
   assert.deepEqual(findSensitive("Ask Jane for the password; it's in the lab's 1Password vault."), []);
   assert.deepEqual(findSensitive("Account number: 000123456789"), ["a bank account number"]);
 });
+
+test("stays quick on long runs of spaces or brackets, whatever someone pastes", () => {
+  const started = Date.now();
+  findSensitive(`account number${" ".repeat(20_000)}x`);
+  findSensitive(`password${" ".repeat(20_000)}`);
+  assert.ok(Date.now() - started < 500, "the secret check took too long");
+});

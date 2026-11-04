@@ -1,9 +1,9 @@
 import { ConfirmSubmit } from "@/components/client";
-import { MemberForm } from "@/components/forms";
+import { InviteForm, MemberForm } from "@/components/forms";
 import { QUIET } from "@/components/ui";
-import { removeMember } from "@/lib/actions";
+import { cancelInviteAction, removeMember } from "@/lib/actions";
 import { monthYear } from "@/lib/format";
-import { labMembers, requireMember, type Member } from "@/lib/labs";
+import { labMembers, pendingInvites, requireMember, type Member } from "@/lib/labs";
 
 export const metadata = { title: "People" };
 
@@ -18,8 +18,9 @@ function given(m: Member): string {
 
 export default async function PeoplePage({ params }: { params: Promise<{ lab: string }> }) {
   const { lab: slug } = await params;
-  const { lab, person, isAdmin } = await requireMember(slug);
-  const members = await labMembers(lab.id);
+  // Managing people is for the lab's own admins, not for someone running Thanos they've let in.
+  const { lab, person, ownAdmin } = await requireMember(slug);
+  const [members, invited] = await Promise.all([labMembers(lab.id), ownAdmin ? pendingInvites(lab.id) : Promise.resolve([])]);
   const current = members.filter((m) => m.role !== "alum");
   const alumni = members.filter((m) => m.role === "alum");
 
@@ -38,10 +39,10 @@ export default async function PeoplePage({ params }: { params: Promise<{ lab: st
         <span>Joined {monthYear(m.joinedAt)}</span>
         <span className="num">{given(m)}</span>
       </p>
-      {(isAdmin || m.id === person.id) && (
-        <MemberForm slug={slug} personId={m.id} role={m.role} title={m.title} canSetRole={isAdmin} />
+      {(ownAdmin || m.id === person.id) && (
+        <MemberForm slug={slug} personId={m.id} role={m.role} title={m.title} canSetRole={ownAdmin} />
       )}
-      {isAdmin && m.id !== person.id && (
+      {ownAdmin && m.id !== person.id && (
         <form action={removeMember.bind(null, slug, m.id)} className="mt-2">
           <ConfirmSubmit
             question={`Remove ${m.name} from ${lab.name}? What they wrote stays, under their name. Make them an alum instead to keep them reading.`}
@@ -61,6 +62,29 @@ export default async function PeoplePage({ params }: { params: Promise<{ lab: st
         Who is in {lab.name}, and what each has given it. Alumni keep reading and answering after they leave, and what anyone wrote
         stays under their name.
       </p>
+      {ownAdmin && (
+        <section className="card mt-8 p-5">
+          <InviteForm slug={slug} />
+          {invited.length > 0 && (
+            <div className="mt-5 border-t border-line pt-4">
+              <h2 className="smallcaps">Invited, not signed in yet</h2>
+              <ul className="mt-2 space-y-1">
+                {invited.map((i) => (
+                  <li key={i.email} className="flex flex-wrap items-center gap-x-3 text-sm">
+                    <span className="num text-ink">{i.email}</span>
+                    <span className="text-faint">{i.role === "admin" ? "as an admin" : "as a member"}, {monthYear(i.createdAt)}</span>
+                    <form action={cancelInviteAction.bind(null, slug, i.email)} className="ml-auto">
+                      <button type="submit" className={QUIET}>
+                        Cancel
+                      </button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+      )}
       <ul className="mt-8 space-y-2">{current.map(row)}</ul>
       {alumni.length > 0 && (
         <section className="mt-10">

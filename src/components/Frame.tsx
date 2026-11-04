@@ -16,6 +16,11 @@ export function Frame({ children, wide = false }: { children: React.ReactNode; w
         <ThemeToggle className="rounded-lg p-2 hover:bg-surface-2" />
       </header>
       <main className={cn("screen-in mx-auto w-full flex-1 px-5 pb-16 pt-8 md:pt-14", wide ? "max-w-3xl" : "max-w-md")}>{children}</main>
+      <footer className="px-5 pb-6 text-center text-xs text-faint md:px-8">
+        <Link href="/privacy" className="hover:text-ink">
+          How Thanos handles your lab&apos;s data
+        </Link>
+      </footer>
     </div>
   );
 }

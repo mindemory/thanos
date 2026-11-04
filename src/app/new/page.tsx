@@ -24,7 +24,7 @@ export default async function NewLabPage() {
       <h1 className="title-1">Start a lab</h1>
       <p className="lede mt-3">
         Any group that keeps knowledge together works: a lab, a core facility, a team. It starts with the questions nearly every lab
-        gets asked, left open for the people who know. You&apos;ll be its admin, with an invite link to share.
+        gets asked, left open for the people who know. Its first admin, you or whoever you name below, gets an invite link to share.
       </p>
       <div className="mt-8">
         <LabForm />

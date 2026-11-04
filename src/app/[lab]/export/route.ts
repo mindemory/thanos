@@ -1,7 +1,7 @@
-import { currentPerson, isOperator } from "@/lib/auth";
+import { currentPerson } from "@/lib/auth";
 import { labCards, labRevisions, type CardSummary } from "@/lib/cards";
 import { monthYear } from "@/lib/format";
-import { labBySlug, roleIn } from "@/lib/labs";
+import { helpingIn, labBySlug, roleIn } from "@/lib/labs";
 import { TOPICS } from "@/lib/topics";
 
 export const dynamic = "force-dynamic";
@@ -42,7 +42,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ lab:
   if (!person) return new Response("Sign in first.\n", { status: 401 });
   const lab = await labBySlug(slug);
   if (!lab) return new Response("No such lab.\n", { status: 404 });
-  if (!(await roleIn(lab.id, person.id)) && !isOperator(person)) return new Response("You aren't in this lab.\n", { status: 403 });
+  if (!(await roleIn(lab.id, person.id)) && !helpingIn(person, lab)) return new Response("You aren't in this lab.\n", { status: 403 });
 
   const cards = await labCards(lab.id);
   const date = new Date().toISOString().slice(0, 10);

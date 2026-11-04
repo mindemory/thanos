@@ -2,14 +2,17 @@ import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { cache } from "react";
 
-import { db, isLocal } from "./db";
+import { db, isLocal, localTrusted } from "./db";
+import { safeNext } from "./paths";
 
 // Sign-in is a link by email: no passwords to keep or forget. The link's token and the session's
 // id are random, and only their hashes are stored, so a copy of the database can't sign anyone in.
 
 const COOKIE = "thanos_session";
 const SESSION_DAYS = 90;
-const LINKS_PER_HOUR = 5;
+const LINKS_PER_HOUR = 5; // to one address
+const LINKS_FROM_ONE_PLACE = 30; // asked for from one network address
+const NEW_ADDRESSES_PER_HOUR = 100; // to addresses Thanos doesn't know yet, from everywhere
 
 export interface Person {
   id: string;
@@ -22,11 +25,7 @@ export class LinkError extends Error {}
 const hash = (secret: string) => createHash("sha256").update(secret).digest("hex");
 const secret = () => randomBytes(32).toString("base64url");
 
-/** A path on this site to go to after signing in; anything else (another site, say) is home. */
-export function safeNext(next: unknown): string {
-  const path = typeof next === "string" ? next : "";
-  return path.startsWith("/") && !path.startsWith("//") && !path.startsWith("/\\") ? path : "/";
-}
+export { safeNext };
 
 export const currentPerson = cache(async (): Promise<Person | null> => {
   const id = (await cookies()).get(COOKIE)?.value;
@@ -51,22 +50,46 @@ export function isOperator(person: Person): boolean {
 
 /** Starting a lab: for operators, and for anyone on a local copy, which is theirs. */
 export function canStartLab(person: Person): boolean {
-  return isLocal || isOperator(person);
+  return localTrusted || isOperator(person);
 }
 
-/** A sign-in link for an email address, good once, for twenty minutes. */
-export async function createLoginLink(email: string, next: string, origin: string): Promise<string> {
+/**
+ * A sign-in link for an email address, good once, for twenty minutes. `from` is the network address
+ * asking, when the host says (Vercel does, and there it can't be faked), for a limit per place.
+ */
+export async function createLoginLink(email: string, next: string, origin: string, from: string): Promise<string> {
   const q = await db();
   const [{ n }] = await q.query<{ n: number }>(
     "select count(*)::int as n from login_links where email = $1 and created_at > now() - interval '1 hour'",
     [email],
   );
   if (n >= LINKS_PER_HOUR) throw new LinkError("That's a lot of sign-in links for one hour. Use the newest one, or wait a while.");
+  const place = from ? hash(`from:${from}`) : "";
+  if (place) {
+    const [{ m }] = await q.query<{ m: number }>(
+      "select count(*)::int as m from login_links where ip_hash = $1 and created_at > now() - interval '1 hour'",
+      [place],
+    );
+    if (m >= LINKS_FROM_ONE_PLACE) throw new LinkError("That's a lot of sign-in links from one place for one hour. Try again later.");
+  }
+  // A ceiling on links to addresses Thanos doesn't know, so nobody can use it to mail strangers in
+  // bulk. People already in Thanos, or invited to a lab, are never held up by it.
+  const [{ known }] = await q.query<{ known: boolean }>(
+    "select exists (select 1 from people where email = $1) or exists (select 1 from invites where email = $1) as known",
+    [email],
+  );
+  if (!known) {
+    const [{ total }] = await q.query<{ total: number }>(
+      `select count(*)::int as total from login_links l
+       where l.created_at > now() - interval '1 hour' and not exists (select 1 from people p where p.email = l.email)`,
+    );
+    if (total >= NEW_ADDRESSES_PER_HOUR) throw new LinkError("Thanos is sending a lot of sign-in emails just now. Try again in a few minutes.");
+  }
   await q.query("delete from login_links where expires_at < now() - interval '1 day'");
   const token = secret();
   await q.query(
-    "insert into login_links (token_hash, email, next, expires_at) values ($1, $2, $3, now() + interval '20 minutes')",
-    [hash(token), email, safeNext(next)],
+    "insert into login_links (token_hash, email, next, expires_at, ip_hash) values ($1, $2, $3, now() + interval '20 minutes', $4)",
+    [hash(token), email, safeNext(next), place],
   );
   return `${origin}/auth/verify?token=${token}`;
 }
@@ -94,6 +117,7 @@ export async function redeemLoginLink(token: string): Promise<string | null> {
     "insert into people (email) values ($1) on conflict (email) do update set email = excluded.email returning id",
     [link.email],
   );
+  await acceptInvites(person.id, link.email);
   const id = secret();
   await q.query(
     `insert into sessions (id_hash, person_id, expires_at) values ($1, $2, now() + interval '${SESSION_DAYS} days')`,
@@ -107,6 +131,16 @@ export async function redeemLoginLink(token: string): Promise<string | null> {
     maxAge: SESSION_DAYS * 24 * 60 * 60,
   });
   return link.next;
+}
+
+/** Labs that named this address are joined, in the role they gave. Runs at sign-in and on the home page. */
+export async function acceptInvites(personId: string, email: string): Promise<void> {
+  const q = await db();
+  await q.query(
+    "insert into members (lab_id, person_id, role) select lab_id, $2, role from invites where email = $1 on conflict do nothing",
+    [email, personId],
+  );
+  await q.query("delete from invites where email = $1", [email]);
 }
 
 export async function endSession(): Promise<void> {

@@ -48,6 +48,6 @@ export function findSensitive(text: string): string[] {
   ) {
     found.add("an API key or token");
   }
-  if (/\b(?:routing|account|acct)\s*(?:number|no\.?|#)\s*(?:is\b|:)?\s*\d{6,17}\b/i.test(text)) found.add("a bank account number");
+  if (/\b(?:routing|account|acct)\s*(?:number|no\.?|#)\s*(?:(?:is\b|:)\s*)?\d{6,17}\b/i.test(text)) found.add("a bank account number");
   return [...found];
 }

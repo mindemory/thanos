@@ -111,7 +111,7 @@ function parse(md: string): Block[] {
 // Bold, code, links and web addresses, then values written without backticks (a chart string, a
 // path, a shared drive), then italics.
 const INLINE = new RegExp(
-  String.raw`(\*\*[^*]+\*\*|` + "`[^`]+`" + String.raw`|\[[^\]]+\]\([^)\s]+\)|https?:\/\/[^\s<>()]*[^\s<>().,;:!?'"]|${VALUE}|\*[^*\s][^*]*\*)`,
+  String.raw`(\*\*[^*]+\*\*|` + "`[^`]+`" + String.raw`|\[[^\[\]\n]{1,300}\]\([^)\s]{1,2000}\)|https?:\/\/[^\s<>()]{0,2000}[^\s<>().,;:!?'"]|${VALUE}|\*[^*\s][^*]*\*)`,
   "g",
 );
 

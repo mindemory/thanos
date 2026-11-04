@@ -16,6 +16,13 @@ export interface Db {
  */
 export const isLocal = !process.env.DATABASE_URL;
 
+/**
+ * A local copy its owner is using: a development server, or a build run with THANOS_LOCAL=1. Only
+ * then does Thanos show sign-in links on the page and let anyone join any lab, so a server started
+ * without a database by mistake stays shut.
+ */
+export const localTrusted = isLocal && (process.env.NODE_ENV !== "production" || process.env.THANOS_LOCAL === "1");
+
 // Kept on globalThis so a dev server's hot reload reuses the open database instead of opening
 // the same files a second time. The schema is brought up to date again whenever its version
 // changes, which can happen while a dev server runs.
@@ -54,7 +61,9 @@ async function open(): Promise<Db> {
   if (url) {
     const { default: postgres } = await import("postgres");
     // prepare: false, so it also works through a transaction pooler (Supabase's port 6543).
-    const sql = postgres(url, { prepare: false, max: 3, idle_timeout: 20, connect_timeout: 15, onnotice: () => {} });
+    // THANOS_DB_POOL caps the connections each server keeps, for a database that allows few.
+    const max = Number(process.env.THANOS_DB_POOL) || 3;
+    const sql = postgres(url, { prepare: false, max, idle_timeout: 20, connect_timeout: 15, onnotice: () => {} });
     return {
       query: async <T,>(text: string, params: unknown[] = []) =>
         (await sql.unsafe(text, params as never[])) as unknown as T[],
